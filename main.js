@@ -28,7 +28,7 @@ const PARAMS = {
     saturation: 0.78,
     openness: 0.55,
     softness: 0.5,
-    glow: 0.65
+    glow: 1
   },
 
   debug: {
