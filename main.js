@@ -3,6 +3,7 @@ import { OrbitControls } from "https://unpkg.com/three@0.168.0/examples/jsm/cont
 
 const PARAMS = {
   transitionSmoothness: 6.0,
+  layerTransitionSeconds: 0.35,
 
   waveWidth: 14,
   waveHeight: 3.8,
@@ -16,18 +17,33 @@ const PARAMS = {
   emotionDimensions: {
     energy: 0.45,
     turbulence: 0.45,
+    depth: 0.55,
+    detail: 0.5,
+    lineCount: 3,
+    lineSpacing: 0.5,
+    lineSharpness: 0.8,
+    lineFill: 0.18,
     red: 0.94,
     green: 0.71,
     blue: 0.37,
     saturation: 0.78,
     openness: 0.55,
     softness: 0.5,
-    glow: 0.65
+    glow: 1
+  },
+
+  debug: {
+    freeze: false,
+    wireframe: false,
+    singleLayer: false,
+    noNoise: false,
+    noSway: false
   }
 };
 
 window.WAVE_PARAMS = PARAMS;
 window.EMOTION_DIMENSIONS = PARAMS.emotionDimensions;
+window.DEBUG_OPTIONS = PARAMS.debug;
 
 const ACTIVE = {
   flowSpeed: 0.5,
@@ -53,6 +69,10 @@ const ACTIVE = {
   sceneSwayXSpeed: 0.11,
   sceneSwayYAmount: 0.055,
   sceneSwayXAmount: 0.02,
+  bandCount: 3,
+  bandSpacing: 0.08,
+  bandSharpness: 0.8,
+  bandFill: 0.18,
   baseRotationX: PARAMS.baseRotationX,
   baseRgb: { r: 240, g: 180, b: 95 }
 };
@@ -86,6 +106,10 @@ const BLEND_KEYS = [
   "sceneSwayXSpeed",
   "sceneSwayYAmount",
   "sceneSwayXAmount",
+  "bandCount",
+  "bandSpacing",
+  "bandSharpness",
+  "bandFill",
   "baseRotationX"
 ];
 
@@ -93,6 +117,12 @@ function updateTargetFromDimensions() {
   const d = PARAMS.emotionDimensions;
   const energy = THREE.MathUtils.clamp(d.energy, 0, 1);
   const turbulence = THREE.MathUtils.clamp(d.turbulence, 0, 1);
+  const depth = THREE.MathUtils.clamp(d.depth, 0, 1);
+  const detail = THREE.MathUtils.clamp(d.detail, 0, 1);
+  const lineCountSteps = THREE.MathUtils.clamp(Math.round(d.lineCount), 1, 5);
+  const lineSpacing = THREE.MathUtils.clamp(d.lineSpacing, 0, 1);
+  const lineSharpness = THREE.MathUtils.clamp(d.lineSharpness, 0, 1);
+  const lineFill = THREE.MathUtils.clamp(d.lineFill, 0, 1);
   const red = THREE.MathUtils.clamp(d.red, 0, 1);
   const green = THREE.MathUtils.clamp(d.green, 0, 1);
   const blue = THREE.MathUtils.clamp(d.blue, 0, 1);
@@ -105,30 +135,34 @@ function updateTargetFromDimensions() {
   TARGET.swaySpeed = THREE.MathUtils.lerp(0.0, 0.18, energy);
 
   TARGET.layerPhaseStep = THREE.MathUtils.lerp(0.42, 1.0, energy);
-  TARGET.layerYOffset = THREE.MathUtils.lerp(0.1, 0.24, openness);
-  TARGET.layerXOffset = THREE.MathUtils.lerp(0.01, 0.08, openness);
+  TARGET.layerYOffset = THREE.MathUtils.lerp(0.08, 0.26, openness * (0.5 + 0.5 * depth));
+  TARGET.layerXOffset = THREE.MathUtils.lerp(0.005, 0.09, openness * (0.5 + 0.5 * depth));
   TARGET.layerTilt = THREE.MathUtils.lerp(0.01, 0.05, openness);
   TARGET.layerScaleFalloff = THREE.MathUtils.lerp(0.03, 0.07, 1.0 - openness);
 
   TARGET.waveAmpA = THREE.MathUtils.lerp(0.0, 0.62, energy);
   TARGET.waveAmpB = THREE.MathUtils.lerp(0.0, 0.33, energy * (1.0 - 0.35 * softness));
-  TARGET.depthWaveAmp = THREE.MathUtils.lerp(0.0, 0.4, energy * (1.0 - 0.35 * softness));
+  TARGET.depthWaveAmp = THREE.MathUtils.lerp(0.0, 0.5, depth * energy * (1.0 - 0.35 * softness));
 
   TARGET.noiseAmpY = THREE.MathUtils.lerp(0.0, 1.9, turbulence);
   TARGET.noiseScaleX = THREE.MathUtils.lerp(0.0, 0.95, turbulence);
   TARGET.noiseScaleY = THREE.MathUtils.lerp(0.0, 3.0, turbulence);
-  TARGET.depthNoiseAmp = THREE.MathUtils.lerp(0.0, 2.9, turbulence);
+  TARGET.depthNoiseAmp = THREE.MathUtils.lerp(0.0, 3.2, turbulence * depth);
 
   TARGET.baseOpacity = THREE.MathUtils.lerp(0.25, 0.7, glow);
   TARGET.opacityFalloff = THREE.MathUtils.lerp(0.01, 0.024, 1.0 - openness);
-  TARGET.filamentDensity = THREE.MathUtils.lerp(18, 58, energy);
-  TARGET.filamentSharpness = THREE.MathUtils.lerp(28, 8, softness);
-  TARGET.shimmerFrequency = THREE.MathUtils.lerp(7, 34, energy);
+  TARGET.filamentDensity = THREE.MathUtils.lerp(12, 72, detail);
+  TARGET.filamentSharpness = THREE.MathUtils.lerp(8, 30, detail * (1.0 - softness * 0.5));
+  TARGET.shimmerFrequency = THREE.MathUtils.lerp(5, 40, detail * (0.25 + 0.75 * energy));
 
   TARGET.sceneSwayYSpeed = THREE.MathUtils.lerp(0.0, 0.32, energy);
   TARGET.sceneSwayXSpeed = THREE.MathUtils.lerp(0.0, 0.22, energy);
   TARGET.sceneSwayYAmount = THREE.MathUtils.lerp(0.0, 0.11, openness);
   TARGET.sceneSwayXAmount = THREE.MathUtils.lerp(0.0, 0.04, openness);
+  TARGET.bandCount = lineCountSteps * 2 - 1;
+  TARGET.bandSpacing = THREE.MathUtils.lerp(0.035, 0.16, lineSpacing);
+  TARGET.bandSharpness = lineSharpness;
+  TARGET.bandFill = lineFill;
   TARGET.baseRotationX = PARAMS.baseRotationX;
 
   // Saturation 0 = grayscale, 1 = original RGB ratio.
@@ -194,6 +228,10 @@ function createMeaningfulMixerUI() {
   }
 
   function addDimensionSlider(key, labelText) {
+    addSlider(key, labelText, 0, 1, 0.01, (v) => v.toFixed(2));
+  }
+
+  function addParamSlider(key, labelText, min, max, step, formatValue) {
     const row = document.createElement("label");
     row.style.display = "grid";
     row.style.gridTemplateColumns = "76px minmax(0, 1fr) 44px";
@@ -206,18 +244,51 @@ function createMeaningfulMixerUI() {
 
     const input = document.createElement("input");
     input.type = "range";
-    input.min = "0";
-    input.max = "1";
-    input.step = "0.01";
-    input.value = String(PARAMS.emotionDimensions[key].toFixed(2));
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(PARAMS[key]);
 
     const value = document.createElement("span");
-    value.textContent = PARAMS.emotionDimensions[key].toFixed(2);
+    value.textContent = formatValue(PARAMS[key]);
+    value.style.textAlign = "right";
+
+    input.addEventListener("input", () => {
+      PARAMS[key] = Number(input.value);
+      value.textContent = formatValue(PARAMS[key]);
+    });
+
+    row.appendChild(name);
+    row.appendChild(input);
+    row.appendChild(value);
+    panel.appendChild(row);
+  }
+
+  function addSlider(key, labelText, min, max, step, formatValue) {
+    const row = document.createElement("label");
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "76px minmax(0, 1fr) 44px";
+    row.style.gap = "6px";
+    row.style.alignItems = "center";
+    row.style.margin = "6px 0";
+
+    const name = document.createElement("span");
+    name.textContent = labelText;
+
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(PARAMS.emotionDimensions[key]);
+
+    const value = document.createElement("span");
+    value.textContent = formatValue(PARAMS.emotionDimensions[key]);
     value.style.textAlign = "right";
 
     input.addEventListener("input", () => {
       PARAMS.emotionDimensions[key] = Number(input.value);
-      value.textContent = Number(input.value).toFixed(2);
+      value.textContent = formatValue(Number(input.value));
       updateTargetFromDimensions();
     });
 
@@ -227,11 +298,43 @@ function createMeaningfulMixerUI() {
     panel.appendChild(row);
   }
 
+  function addDebugCheckbox(key, labelText) {
+    const row = document.createElement("label");
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "1fr auto";
+    row.style.gap = "8px";
+    row.style.alignItems = "center";
+    row.style.margin = "4px 0";
+
+    const name = document.createElement("span");
+    name.textContent = labelText;
+
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = PARAMS.debug[key];
+    input.addEventListener("change", () => {
+      PARAMS.debug[key] = input.checked;
+    });
+
+    row.appendChild(name);
+    row.appendChild(input);
+    panel.appendChild(row);
+  }
+
   addSectionHeader("Dynamics");
   addDimensionSlider("energy", "energy");
   addDimensionSlider("turbulence", "noise");
+  addDimensionSlider("depth", "depth");
+  addDimensionSlider("detail", "detail");
+
+  addSectionHeader("Lines");
+  addSlider("lineCount", "count", 1, 5, 1, (v) => String(Math.round(v) * 2 - 1));
+  addSlider("lineSpacing", "spacing", 0, 1, 0.005, (v) => Number(v).toFixed(3));
+  addDimensionSlider("lineSharpness", "sharpness");
+  addDimensionSlider("lineFill", "fill");
 
   addSectionHeader("Form");
+  addParamSlider("layerCount", "layers", 1, 16, 1, (v) => String(Math.round(v)));
   addDimensionSlider("openness", "openness");
   addDimensionSlider("softness", "softness");
 
@@ -241,6 +344,13 @@ function createMeaningfulMixerUI() {
   addDimensionSlider("blue", "blue");
   addDimensionSlider("saturation", "saturation");
   addDimensionSlider("glow", "glow");
+
+  addSectionHeader("Debug");
+  addDebugCheckbox("freeze", "freeze motion");
+  addDebugCheckbox("wireframe", "wireframe");
+  addDebugCheckbox("singleLayer", "single layer");
+  addDebugCheckbox("noNoise", "disable noise");
+  addDebugCheckbox("noSway", "disable sway");
 
   document.body.appendChild(panel);
 }
@@ -345,9 +455,14 @@ const fragmentShader = `
   uniform vec3 uColorA;
   uniform vec3 uColorB;
   uniform float uOpacity;
+  uniform float uLayerFade;
   uniform float uFilamentDensity;
   uniform float uFilamentSharpness;
   uniform float uShimmerFrequency;
+  uniform float uBandCount;
+  uniform float uBandSpacing;
+  uniform float uBandSharpness;
+  uniform float uBandFill;
 
   varying vec2 vUv;
   varying float vNoise;
@@ -356,33 +471,73 @@ const fragmentShader = `
     float body = pow(max(0.0, 1.0 - abs(vUv.y - 0.5) * 2.0), 1.25);
     float edge = smoothstep(0.03, 0.2, vUv.x) * smoothstep(0.03, 0.2, 1.0 - vUv.x);
 
+    float bands = max(1.0, floor(uBandCount + 0.5));
+    float y = vUv.y - 0.5;
+    float spacing = max(0.001, uBandSpacing);
+    float phase = y / spacing;
+    float periodicDist = abs(fract(phase + 0.5) - 0.5);
+    float width = mix(0.11, 0.006, clamp(uBandSharpness, 0.0, 1.0));
+    float coreBand = 1.0 - smoothstep(width, width * 1.7, periodicDist);
+
+    // Keep only the requested count of major bands while preserving smooth spacing transitions.
+    float maxCenter = (bands - 1.0) * 0.5;
+    float countMask = 1.0 - smoothstep(maxCenter + 0.5, maxCenter + 1.0, abs(phase));
+    float bandMask = mix(coreBand, 1.0, clamp(uBandFill, 0.0, 1.0)) * countMask;
+
     float filaments = pow(abs(sin((vUv.y * uFilamentDensity + vUv.x * 2.4 + uTime * 0.72 + vNoise * 0.9) * 3.14159)), uFilamentSharpness);
     float shimmer = 0.65 + 0.35 * sin(vUv.x * uShimmerFrequency + uTime * 1.7 + vNoise * 4.0);
+    float fill = clamp(uBandFill, 0.0, 1.0);
+    float textureMask = mix(0.18 + filaments * 0.82, 1.0, fill);
 
     vec3 color = mix(uColorA, uColorB, clamp(vUv.x * 0.75 + vNoise * 0.45, 0.0, 1.0));
-    float alpha = (0.10 + filaments * 0.75) * body * edge * shimmer * uOpacity;
+    float alpha = textureMask * body * edge * shimmer * uOpacity * bandMask * uLayerFade;
 
     gl_FragColor = vec4(color, alpha);
   }
 `;
 
 const ribbons = [];
+let transitioningOutRibbons = [];
+const layerTransitionState = {
+  active: false,
+  elapsed: 0
+};
 const waveGroup = new THREE.Group();
 waveGroup.scale.setScalar(PARAMS.globalScale);
 scene.add(waveGroup);
 
-for (let i = 0; i < PARAMS.layerCount; i++) {
-  const t = PARAMS.layerCount > 1 ? i / (PARAMS.layerCount - 1) : 0;
+function clearRibbons() {
+  for (let i = 0; i < ribbons.length; i++) {
+    const ribbon = ribbons[i];
+    waveGroup.remove(ribbon);
+    ribbon.material.dispose();
+  }
+  ribbons.length = 0;
+}
+
+function clearTransitioningOutRibbons() {
+  for (let i = 0; i < transitioningOutRibbons.length; i++) {
+    const ribbon = transitioningOutRibbons[i];
+    waveGroup.remove(ribbon);
+    ribbon.material.dispose();
+  }
+  transitioningOutRibbons.length = 0;
+}
+
+function addRibbon(index, total, layerFade = 1) {
+  const t = total > 1 ? index / (total - 1) : 0;
   const colorA = new THREE.Color();
   const colorB = new THREE.Color();
   getLayerColors(t, colorA, colorB);
+
   const material = new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
-      uPhase: { value: i * PARAMS.layerPhaseStep },
+      uPhase: { value: index * PARAMS.layerPhaseStep },
       uColorA: { value: colorA },
       uColorB: { value: colorB },
       uOpacity: { value: PARAMS.baseOpacity - t * PARAMS.opacityFalloff },
+      uLayerFade: { value: layerFade },
       uWaveAmpA: { value: PARAMS.waveAmpA },
       uWaveAmpB: { value: PARAMS.waveAmpB },
       uNoiseAmpY: { value: PARAMS.noiseAmpY },
@@ -392,7 +547,11 @@ for (let i = 0; i < PARAMS.layerCount; i++) {
       uDepthWaveAmp: { value: PARAMS.depthWaveAmp },
       uFilamentDensity: { value: PARAMS.filamentDensity },
       uFilamentSharpness: { value: PARAMS.filamentSharpness },
-      uShimmerFrequency: { value: PARAMS.shimmerFrequency }
+      uShimmerFrequency: { value: PARAMS.shimmerFrequency },
+      uBandCount: { value: ACTIVE.bandCount },
+      uBandSpacing: { value: ACTIVE.bandSpacing },
+      uBandSharpness: { value: ACTIVE.bandSharpness },
+      uBandFill: { value: ACTIVE.bandFill }
     },
     vertexShader,
     fragmentShader,
@@ -403,16 +562,45 @@ for (let i = 0; i < PARAMS.layerCount; i++) {
   });
 
   const ribbon = new THREE.Mesh(ribbonGeometry, material);
-  const centered = i - (PARAMS.layerCount - 1) * 0.5;
+  const centered = index - (total - 1) * 0.5;
   ribbon.position.y = centered * PARAMS.layerYOffset;
   ribbon.position.x = centered * PARAMS.layerXOffset;
   ribbon.rotation.z = centered * PARAMS.layerTilt;
-  ribbon.scale.setScalar(1.0 - i * PARAMS.layerScaleFalloff);
+  ribbon.scale.setScalar(1.0 - index * PARAMS.layerScaleFalloff);
   ribbon.userData.layerT = t;
+  ribbon.userData.layerFade = layerFade;
 
   ribbons.push(ribbon);
   waveGroup.add(ribbon);
 }
+
+function rebuildRibbons(nextLayerCount, immediate = false) {
+  const total = Math.max(1, Math.round(nextLayerCount));
+  PARAMS.layerCount = total;
+
+  if (immediate) {
+    clearTransitioningOutRibbons();
+    clearRibbons();
+    for (let i = 0; i < total; i++) {
+      addRibbon(i, total, 1);
+    }
+    layerTransitionState.active = false;
+    layerTransitionState.elapsed = 0;
+    return;
+  }
+
+  clearTransitioningOutRibbons();
+  transitioningOutRibbons = ribbons.splice(0, ribbons.length);
+
+  for (let i = 0; i < total; i++) {
+    addRibbon(i, total, 0);
+  }
+
+  layerTransitionState.active = true;
+  layerTransitionState.elapsed = 0;
+}
+
+rebuildRibbons(PARAMS.layerCount, true);
 
 const ambientLight = new THREE.AmbientLight(0xffd9a8, 0.45);
 scene.add(ambientLight);
@@ -440,17 +628,52 @@ createMeaningfulMixerUI();
 function animate() {
   requestAnimationFrame(animate);
   updateTargetFromDimensions();
+  if (Math.round(PARAMS.layerCount) !== ribbons.length) {
+    rebuildRibbons(PARAMS.layerCount);
+  }
   const deltaTime = clock.getDelta();
   smoothActiveParams(deltaTime);
 
-  flowTime += deltaTime * ACTIVE.flowSpeed;
-  swayTime += deltaTime * ACTIVE.swaySpeed;
+  if (layerTransitionState.active) {
+    layerTransitionState.elapsed += deltaTime;
+    const duration = Math.max(0.001, PARAMS.layerTransitionSeconds);
+    const t = Math.min(1, layerTransitionState.elapsed / duration);
+    const eased = t * t * (3 - 2 * t);
+
+    for (let i = 0; i < ribbons.length; i++) {
+      ribbons[i].userData.layerFade = eased;
+    }
+    for (let i = 0; i < transitioningOutRibbons.length; i++) {
+      transitioningOutRibbons[i].userData.layerFade = 1 - eased;
+    }
+
+    if (t >= 1) {
+      clearTransitioningOutRibbons();
+      layerTransitionState.active = false;
+      layerTransitionState.elapsed = 0;
+    }
+  } else {
+    for (let i = 0; i < ribbons.length; i++) {
+      ribbons[i].userData.layerFade = 1;
+    }
+  }
+
+  if (!PARAMS.debug.freeze) {
+    flowTime += deltaTime * ACTIVE.flowSpeed;
+    swayTime += deltaTime * ACTIVE.swaySpeed;
+  }
+
+  const centerLayer = Math.floor((ribbons.length - 1) * 0.5);
+  const forceSingleLine = Math.round(PARAMS.emotionDimensions.lineCount) <= 1;
 
   for (let i = 0; i < ribbons.length; i++) {
     const ribbon = ribbons[i];
     const uniforms = ribbon.material.uniforms;
     const t = ribbon.userData.layerT;
-    const centered = i - (PARAMS.layerCount - 1) * 0.5;
+    const centered = i - (ribbons.length - 1) * 0.5;
+
+    ribbon.visible = (!PARAMS.debug.singleLayer && !forceSingleLine) || i === centerLayer;
+    ribbon.material.wireframe = PARAMS.debug.wireframe;
 
     getLayerColors(t, tempColorA, tempColorB);
 
@@ -458,19 +681,24 @@ function animate() {
     uniforms.uColorA.value.copy(tempColorA);
     uniforms.uColorB.value.copy(tempColorB);
     uniforms.uOpacity.value = ACTIVE.baseOpacity - t * ACTIVE.opacityFalloff;
+    uniforms.uLayerFade.value = ribbon.userData.layerFade ?? 1;
 
     uniforms.uPhase.value = i * ACTIVE.layerPhaseStep;
 
     uniforms.uWaveAmpA.value = ACTIVE.waveAmpA;
     uniforms.uWaveAmpB.value = ACTIVE.waveAmpB;
-    uniforms.uNoiseAmpY.value = ACTIVE.noiseAmpY;
+    uniforms.uNoiseAmpY.value = PARAMS.debug.noNoise ? 0.0 : ACTIVE.noiseAmpY;
     uniforms.uNoiseScaleX.value = ACTIVE.noiseScaleX;
     uniforms.uNoiseScaleY.value = ACTIVE.noiseScaleY;
-    uniforms.uDepthNoiseAmp.value = ACTIVE.depthNoiseAmp;
+    uniforms.uDepthNoiseAmp.value = PARAMS.debug.noNoise ? 0.0 : ACTIVE.depthNoiseAmp;
     uniforms.uDepthWaveAmp.value = ACTIVE.depthWaveAmp;
     uniforms.uFilamentDensity.value = ACTIVE.filamentDensity;
     uniforms.uFilamentSharpness.value = ACTIVE.filamentSharpness;
     uniforms.uShimmerFrequency.value = ACTIVE.shimmerFrequency;
+    uniforms.uBandCount.value = ACTIVE.bandCount;
+    uniforms.uBandSpacing.value = ACTIVE.bandSpacing;
+    uniforms.uBandSharpness.value = ACTIVE.bandSharpness;
+    uniforms.uBandFill.value = ACTIVE.bandFill;
 
     ribbon.position.y = centered * ACTIVE.layerYOffset;
     ribbon.position.x = centered * ACTIVE.layerXOffset;
@@ -478,10 +706,21 @@ function animate() {
     ribbon.scale.setScalar(1.0 - i * ACTIVE.layerScaleFalloff);
   }
 
+  for (let i = 0; i < transitioningOutRibbons.length; i++) {
+    const oldRibbon = transitioningOutRibbons[i];
+    oldRibbon.material.uniforms.uTime.value = flowTime;
+    oldRibbon.material.uniforms.uLayerFade.value = oldRibbon.userData.layerFade ?? 0;
+  }
+
   controls.update();
 
-  waveGroup.rotation.y = Math.sin(swayTime * ACTIVE.sceneSwayYSpeed) * ACTIVE.sceneSwayYAmount;
-  waveGroup.rotation.x = ACTIVE.baseRotationX + Math.sin(swayTime * ACTIVE.sceneSwayXSpeed) * ACTIVE.sceneSwayXAmount;
+  if (PARAMS.debug.noSway) {
+    waveGroup.rotation.y = 0;
+    waveGroup.rotation.x = ACTIVE.baseRotationX;
+  } else {
+    waveGroup.rotation.y = Math.sin(swayTime * ACTIVE.sceneSwayYSpeed) * ACTIVE.sceneSwayYAmount;
+    waveGroup.rotation.x = ACTIVE.baseRotationX + Math.sin(swayTime * ACTIVE.sceneSwayXSpeed) * ACTIVE.sceneSwayXAmount;
+  }
 
   renderer.render(scene, camera);
 }
