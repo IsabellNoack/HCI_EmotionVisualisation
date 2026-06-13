@@ -3,7 +3,6 @@ import { OrbitControls } from "https://unpkg.com/three@0.168.0/examples/jsm/cont
 
 const PARAMS = {
   transitionSmoothness: 6.0,
-  layerTransitionSeconds: 0.35,
 
   waveWidth: 14,
   waveHeight: 3.8,
@@ -29,7 +28,7 @@ const PARAMS = {
     saturation: 0.78,
     openness: 0.55,
     softness: 0.5,
-    glow: 1
+    glow: 0.65
   },
 
   debug: {
@@ -455,7 +454,6 @@ const fragmentShader = `
   uniform vec3 uColorA;
   uniform vec3 uColorB;
   uniform float uOpacity;
-  uniform float uLayerFade;
   uniform float uFilamentDensity;
   uniform float uFilamentSharpness;
   uniform float uShimmerFrequency;
@@ -490,18 +488,13 @@ const fragmentShader = `
     float textureMask = mix(0.18 + filaments * 0.82, 1.0, fill);
 
     vec3 color = mix(uColorA, uColorB, clamp(vUv.x * 0.75 + vNoise * 0.45, 0.0, 1.0));
-    float alpha = textureMask * body * edge * shimmer * uOpacity * bandMask * uLayerFade;
+    float alpha = textureMask * body * edge * shimmer * uOpacity * bandMask;
 
     gl_FragColor = vec4(color, alpha);
   }
 `;
 
 const ribbons = [];
-let transitioningOutRibbons = [];
-const layerTransitionState = {
-  active: false,
-  elapsed: 0
-};
 const waveGroup = new THREE.Group();
 waveGroup.scale.setScalar(PARAMS.globalScale);
 scene.add(waveGroup);
@@ -515,16 +508,7 @@ function clearRibbons() {
   ribbons.length = 0;
 }
 
-function clearTransitioningOutRibbons() {
-  for (let i = 0; i < transitioningOutRibbons.length; i++) {
-    const ribbon = transitioningOutRibbons[i];
-    waveGroup.remove(ribbon);
-    ribbon.material.dispose();
-  }
-  transitioningOutRibbons.length = 0;
-}
-
-function addRibbon(index, total, layerFade = 1) {
+function addRibbon(index, total) {
   const t = total > 1 ? index / (total - 1) : 0;
   const colorA = new THREE.Color();
   const colorB = new THREE.Color();
@@ -537,7 +521,6 @@ function addRibbon(index, total, layerFade = 1) {
       uColorA: { value: colorA },
       uColorB: { value: colorB },
       uOpacity: { value: PARAMS.baseOpacity - t * PARAMS.opacityFalloff },
-      uLayerFade: { value: layerFade },
       uWaveAmpA: { value: PARAMS.waveAmpA },
       uWaveAmpB: { value: PARAMS.waveAmpB },
       uNoiseAmpY: { value: PARAMS.noiseAmpY },
@@ -568,39 +551,21 @@ function addRibbon(index, total, layerFade = 1) {
   ribbon.rotation.z = centered * PARAMS.layerTilt;
   ribbon.scale.setScalar(1.0 - index * PARAMS.layerScaleFalloff);
   ribbon.userData.layerT = t;
-  ribbon.userData.layerFade = layerFade;
 
   ribbons.push(ribbon);
   waveGroup.add(ribbon);
 }
 
-function rebuildRibbons(nextLayerCount, immediate = false) {
+function rebuildRibbons(nextLayerCount) {
   const total = Math.max(1, Math.round(nextLayerCount));
   PARAMS.layerCount = total;
-
-  if (immediate) {
-    clearTransitioningOutRibbons();
-    clearRibbons();
-    for (let i = 0; i < total; i++) {
-      addRibbon(i, total, 1);
-    }
-    layerTransitionState.active = false;
-    layerTransitionState.elapsed = 0;
-    return;
-  }
-
-  clearTransitioningOutRibbons();
-  transitioningOutRibbons = ribbons.splice(0, ribbons.length);
-
+  clearRibbons();
   for (let i = 0; i < total; i++) {
-    addRibbon(i, total, 0);
+    addRibbon(i, total);
   }
-
-  layerTransitionState.active = true;
-  layerTransitionState.elapsed = 0;
 }
 
-rebuildRibbons(PARAMS.layerCount, true);
+rebuildRibbons(PARAMS.layerCount);
 
 const ambientLight = new THREE.AmbientLight(0xffd9a8, 0.45);
 scene.add(ambientLight);
@@ -634,30 +599,6 @@ function animate() {
   const deltaTime = clock.getDelta();
   smoothActiveParams(deltaTime);
 
-  if (layerTransitionState.active) {
-    layerTransitionState.elapsed += deltaTime;
-    const duration = Math.max(0.001, PARAMS.layerTransitionSeconds);
-    const t = Math.min(1, layerTransitionState.elapsed / duration);
-    const eased = t * t * (3 - 2 * t);
-
-    for (let i = 0; i < ribbons.length; i++) {
-      ribbons[i].userData.layerFade = eased;
-    }
-    for (let i = 0; i < transitioningOutRibbons.length; i++) {
-      transitioningOutRibbons[i].userData.layerFade = 1 - eased;
-    }
-
-    if (t >= 1) {
-      clearTransitioningOutRibbons();
-      layerTransitionState.active = false;
-      layerTransitionState.elapsed = 0;
-    }
-  } else {
-    for (let i = 0; i < ribbons.length; i++) {
-      ribbons[i].userData.layerFade = 1;
-    }
-  }
-
   if (!PARAMS.debug.freeze) {
     flowTime += deltaTime * ACTIVE.flowSpeed;
     swayTime += deltaTime * ACTIVE.swaySpeed;
@@ -681,7 +622,6 @@ function animate() {
     uniforms.uColorA.value.copy(tempColorA);
     uniforms.uColorB.value.copy(tempColorB);
     uniforms.uOpacity.value = ACTIVE.baseOpacity - t * ACTIVE.opacityFalloff;
-    uniforms.uLayerFade.value = ribbon.userData.layerFade ?? 1;
 
     uniforms.uPhase.value = i * ACTIVE.layerPhaseStep;
 
@@ -704,12 +644,6 @@ function animate() {
     ribbon.position.x = centered * ACTIVE.layerXOffset;
     ribbon.rotation.z = centered * ACTIVE.layerTilt;
     ribbon.scale.setScalar(1.0 - i * ACTIVE.layerScaleFalloff);
-  }
-
-  for (let i = 0; i < transitioningOutRibbons.length; i++) {
-    const oldRibbon = transitioningOutRibbons[i];
-    oldRibbon.material.uniforms.uTime.value = flowTime;
-    oldRibbon.material.uniforms.uLayerFade.value = oldRibbon.userData.layerFade ?? 0;
   }
 
   controls.update();
