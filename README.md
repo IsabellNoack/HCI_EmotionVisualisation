@@ -1,4 +1,4 @@
-# Emotion Waves Visualizer
+# Waves Visualizer
 
 A simple Three.js experiment for visualizing emotions as overlapping animated waves.
 
