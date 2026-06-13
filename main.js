@@ -1,89 +1,248 @@
 import * as THREE from "https://unpkg.com/three@0.168.0/build/three.module.js?module";
 import { OrbitControls } from "https://unpkg.com/three@0.168.0/examples/jsm/controls/OrbitControls.js?module";
 
-// Tune these values and reload to shape the whole look quickly.
 const PARAMS = {
-  speed: 0.42,
+  transitionSmoothness: 6.0,
 
   waveWidth: 14,
   waveHeight: 3.8,
   meshDensityX: 620,
   meshDensityY: 140,
+  globalScale: 1.35,
 
   layerCount: 6,
-  layerPhaseStep: 0.65,
-  layerYOffset: 0.17,
-  layerXOffset: 0.05,
-  layerTilt: 0.03,
-  layerScaleFalloff: 0.05,
-
-  colorAH: 0.08,
-  colorAS: 0.7,
-  colorAL: 0.35,
-  colorBH: 0.11,
-  colorBS: 0.95,
-  colorBL: 0.72,
-  colorBHueShiftPerLayer: 0.02,
-
-  // Single master RGB color. Edit this to recolor the whole wave quickly.
-  baseRgb: { r: 240, g: 180, b: 95 },
-
-  baseOpacity: 0.4,
-  opacityFalloff: 0.015,
-
-  waveAmpA: 0.32,
-  waveAmpB: 0.14,
-  noiseAmpY: 0.95,
-  noiseScaleX: 0.42,
-  noiseScaleY: 1.9,
-  depthNoiseAmp: 1.6,
-  depthWaveAmp: 0.34,
-
-  filamentDensity: 34,
-  filamentSharpness: 16,
-  shimmerFrequency: 18,
-
-  sceneSwayYSpeed: 0.15,
-  sceneSwayXSpeed: 0.1,
-  sceneSwayYAmount: 0.06,
-  sceneSwayXAmount: 0.02,
   baseRotationX: -Math.PI * 0.5,
 
-  debug: {
-    enabled: false,
-    wireframe: false,
-    singleLayer: false,
-    disableNoise: false,
-    pause: false,
-    showOverlay: true
+  emotionDimensions: {
+    energy: 0.45,
+    turbulence: 0.45,
+    red: 0.94,
+    green: 0.71,
+    blue: 0.37,
+    saturation: 0.78,
+    openness: 0.55,
+    softness: 0.5,
+    glow: 0.65
   }
 };
 
 window.WAVE_PARAMS = PARAMS;
+window.EMOTION_DIMENSIONS = PARAMS.emotionDimensions;
 
-function getLayerColors(t, outA, outB) {
-  const hasRgb =
-    PARAMS.baseRgb &&
-    Number.isFinite(PARAMS.baseRgb.r) &&
-    Number.isFinite(PARAMS.baseRgb.g) &&
-    Number.isFinite(PARAMS.baseRgb.b);
+const ACTIVE = {
+  flowSpeed: 0.5,
+  swaySpeed: 0.08,
+  layerPhaseStep: 0.7,
+  layerYOffset: 0.16,
+  layerXOffset: 0.04,
+  layerTilt: 0.025,
+  layerScaleFalloff: 0.045,
+  baseOpacity: 0.46,
+  opacityFalloff: 0.014,
+  waveAmpA: 0.3,
+  waveAmpB: 0.12,
+  noiseAmpY: 0.9,
+  noiseScaleX: 0.44,
+  noiseScaleY: 1.8,
+  depthNoiseAmp: 1.4,
+  depthWaveAmp: 0.28,
+  filamentDensity: 34,
+  filamentSharpness: 16,
+  shimmerFrequency: 18,
+  sceneSwayYSpeed: 0.16,
+  sceneSwayXSpeed: 0.11,
+  sceneSwayYAmount: 0.055,
+  sceneSwayXAmount: 0.02,
+  baseRotationX: PARAMS.baseRotationX,
+  baseRgb: { r: 240, g: 180, b: 95 }
+};
 
-  if (hasRgb) {
-    const r = THREE.MathUtils.clamp(PARAMS.baseRgb.r, 0, 255) / 255;
-    const g = THREE.MathUtils.clamp(PARAMS.baseRgb.g, 0, 255) / 255;
-    const b = THREE.MathUtils.clamp(PARAMS.baseRgb.b, 0, 255) / 255;
+const TARGET = {
+  ...ACTIVE,
+  baseRgb: { ...ACTIVE.baseRgb }
+};
 
-    outA.setRGB(r, g, b).multiplyScalar(0.42);
-    outB.setRGB(r, g, b).multiplyScalar(0.9 + t * 0.22);
-    return;
+const BLEND_KEYS = [
+  "flowSpeed",
+  "swaySpeed",
+  "layerPhaseStep",
+  "layerYOffset",
+  "layerXOffset",
+  "layerTilt",
+  "layerScaleFalloff",
+  "baseOpacity",
+  "opacityFalloff",
+  "waveAmpA",
+  "waveAmpB",
+  "noiseAmpY",
+  "noiseScaleX",
+  "noiseScaleY",
+  "depthNoiseAmp",
+  "depthWaveAmp",
+  "filamentDensity",
+  "filamentSharpness",
+  "shimmerFrequency",
+  "sceneSwayYSpeed",
+  "sceneSwayXSpeed",
+  "sceneSwayYAmount",
+  "sceneSwayXAmount",
+  "baseRotationX"
+];
+
+function updateTargetFromDimensions() {
+  const d = PARAMS.emotionDimensions;
+  const energy = THREE.MathUtils.clamp(d.energy, 0, 1);
+  const turbulence = THREE.MathUtils.clamp(d.turbulence, 0, 1);
+  const red = THREE.MathUtils.clamp(d.red, 0, 1);
+  const green = THREE.MathUtils.clamp(d.green, 0, 1);
+  const blue = THREE.MathUtils.clamp(d.blue, 0, 1);
+  const saturation = THREE.MathUtils.clamp(d.saturation, 0, 1);
+  const openness = THREE.MathUtils.clamp(d.openness, 0, 1);
+  const softness = THREE.MathUtils.clamp(d.softness, 0, 1);
+  const glow = THREE.MathUtils.clamp(d.glow, 0, 1);
+
+  TARGET.flowSpeed = THREE.MathUtils.lerp(0.0, 1.45, energy);
+  TARGET.swaySpeed = THREE.MathUtils.lerp(0.0, 0.18, energy);
+
+  TARGET.layerPhaseStep = THREE.MathUtils.lerp(0.42, 1.0, energy);
+  TARGET.layerYOffset = THREE.MathUtils.lerp(0.1, 0.24, openness);
+  TARGET.layerXOffset = THREE.MathUtils.lerp(0.01, 0.08, openness);
+  TARGET.layerTilt = THREE.MathUtils.lerp(0.01, 0.05, openness);
+  TARGET.layerScaleFalloff = THREE.MathUtils.lerp(0.03, 0.07, 1.0 - openness);
+
+  TARGET.waveAmpA = THREE.MathUtils.lerp(0.0, 0.62, energy);
+  TARGET.waveAmpB = THREE.MathUtils.lerp(0.0, 0.33, energy * (1.0 - 0.35 * softness));
+  TARGET.depthWaveAmp = THREE.MathUtils.lerp(0.0, 0.4, energy * (1.0 - 0.35 * softness));
+
+  TARGET.noiseAmpY = THREE.MathUtils.lerp(0.0, 1.9, turbulence);
+  TARGET.noiseScaleX = THREE.MathUtils.lerp(0.0, 0.95, turbulence);
+  TARGET.noiseScaleY = THREE.MathUtils.lerp(0.0, 3.0, turbulence);
+  TARGET.depthNoiseAmp = THREE.MathUtils.lerp(0.0, 2.9, turbulence);
+
+  TARGET.baseOpacity = THREE.MathUtils.lerp(0.25, 0.7, glow);
+  TARGET.opacityFalloff = THREE.MathUtils.lerp(0.01, 0.024, 1.0 - openness);
+  TARGET.filamentDensity = THREE.MathUtils.lerp(18, 58, energy);
+  TARGET.filamentSharpness = THREE.MathUtils.lerp(28, 8, softness);
+  TARGET.shimmerFrequency = THREE.MathUtils.lerp(7, 34, energy);
+
+  TARGET.sceneSwayYSpeed = THREE.MathUtils.lerp(0.0, 0.32, energy);
+  TARGET.sceneSwayXSpeed = THREE.MathUtils.lerp(0.0, 0.22, energy);
+  TARGET.sceneSwayYAmount = THREE.MathUtils.lerp(0.0, 0.11, openness);
+  TARGET.sceneSwayXAmount = THREE.MathUtils.lerp(0.0, 0.04, openness);
+  TARGET.baseRotationX = PARAMS.baseRotationX;
+
+  // Saturation 0 = grayscale, 1 = original RGB ratio.
+  const gray = red * 0.299 + green * 0.587 + blue * 0.114;
+  const satR = gray + (red - gray) * saturation;
+  const satG = gray + (green - gray) * saturation;
+  const satB = gray + (blue - gray) * saturation;
+
+  const brightness = THREE.MathUtils.lerp(0.25, 1.0, glow);
+  TARGET.baseRgb.r = satR * brightness * 255;
+  TARGET.baseRgb.g = satG * brightness * 255;
+  TARGET.baseRgb.b = satB * brightness * 255;
+}
+
+function smoothActiveParams(deltaSeconds) {
+  const alpha = 1.0 - Math.exp(-PARAMS.transitionSmoothness * deltaSeconds);
+
+  for (let i = 0; i < BLEND_KEYS.length; i++) {
+    const key = BLEND_KEYS[i];
+    ACTIVE[key] = THREE.MathUtils.lerp(ACTIVE[key], TARGET[key], alpha);
   }
 
-  outA.setHSL(PARAMS.colorAH, PARAMS.colorAS, PARAMS.colorAL);
-  outB.setHSL(
-    PARAMS.colorBH + t * PARAMS.colorBHueShiftPerLayer,
-    PARAMS.colorBS,
-    PARAMS.colorBL
-  );
+  ACTIVE.baseRgb.r = THREE.MathUtils.lerp(ACTIVE.baseRgb.r, TARGET.baseRgb.r, alpha);
+  ACTIVE.baseRgb.g = THREE.MathUtils.lerp(ACTIVE.baseRgb.g, TARGET.baseRgb.g, alpha);
+  ACTIVE.baseRgb.b = THREE.MathUtils.lerp(ACTIVE.baseRgb.b, TARGET.baseRgb.b, alpha);
+}
+
+function getLayerColors(t, outA, outB) {
+  const r = THREE.MathUtils.clamp(ACTIVE.baseRgb.r, 0, 255) / 255;
+  const g = THREE.MathUtils.clamp(ACTIVE.baseRgb.g, 0, 255) / 255;
+  const b = THREE.MathUtils.clamp(ACTIVE.baseRgb.b, 0, 255) / 255;
+
+  outA.setRGB(r, g, b).multiplyScalar(0.42);
+  outB.setRGB(r, g, b).multiplyScalar(0.9 + t * 0.22);
+}
+
+function createMeaningfulMixerUI() {
+  const panel = document.createElement("div");
+  panel.style.position = "fixed";
+  panel.style.right = "12px";
+  panel.style.top = "12px";
+  panel.style.width = "300px";
+  panel.style.padding = "10px";
+  panel.style.boxSizing = "border-box";
+  panel.style.background = "rgba(0, 0, 0, 0.62)";
+  panel.style.border = "1px solid rgba(255, 200, 120, 0.35)";
+  panel.style.borderRadius = "8px";
+  panel.style.color = "#ffd7a1";
+  panel.style.font = "12px/1.3 monospace";
+  panel.style.zIndex = "20";
+  panel.style.backdropFilter = "blur(4px)";
+
+  function addSectionHeader(labelText) {
+    const header = document.createElement("div");
+    header.textContent = labelText;
+    header.style.marginTop = "8px";
+    header.style.marginBottom = "4px";
+    header.style.fontWeight = "700";
+    header.style.opacity = "0.95";
+    header.style.letterSpacing = "0.2px";
+    header.style.textAlign = "center";
+    panel.appendChild(header);
+  }
+
+  function addDimensionSlider(key, labelText) {
+    const row = document.createElement("label");
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "76px minmax(0, 1fr) 44px";
+    row.style.gap = "6px";
+    row.style.alignItems = "center";
+    row.style.margin = "6px 0";
+
+    const name = document.createElement("span");
+    name.textContent = labelText;
+
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "0";
+    input.max = "1";
+    input.step = "0.01";
+    input.value = String(PARAMS.emotionDimensions[key].toFixed(2));
+
+    const value = document.createElement("span");
+    value.textContent = PARAMS.emotionDimensions[key].toFixed(2);
+    value.style.textAlign = "right";
+
+    input.addEventListener("input", () => {
+      PARAMS.emotionDimensions[key] = Number(input.value);
+      value.textContent = Number(input.value).toFixed(2);
+      updateTargetFromDimensions();
+    });
+
+    row.appendChild(name);
+    row.appendChild(input);
+    row.appendChild(value);
+    panel.appendChild(row);
+  }
+
+  addSectionHeader("Dynamics");
+  addDimensionSlider("energy", "energy");
+  addDimensionSlider("turbulence", "noise");
+
+  addSectionHeader("Form");
+  addDimensionSlider("openness", "openness");
+  addDimensionSlider("softness", "softness");
+
+  addSectionHeader("Color");
+  addDimensionSlider("red", "red");
+  addDimensionSlider("green", "green");
+  addDimensionSlider("blue", "blue");
+  addDimensionSlider("saturation", "saturation");
+  addDimensionSlider("glow", "glow");
+
+  document.body.appendChild(panel);
 }
 
 const scene = new THREE.Scene();
@@ -109,7 +268,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0, 0);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
-controls.minDistance = 4.5;
+controls.minDistance = 1.8;
 controls.maxDistance = 14;
 controls.maxPolarAngle = Math.PI * 0.92;
 controls.update();
@@ -124,7 +283,6 @@ const ribbonGeometry = new THREE.PlaneGeometry(
 const vertexShader = `
   uniform float uTime;
   uniform float uPhase;
-  uniform float uNoiseMix;
   uniform float uWaveAmpA;
   uniform float uWaveAmpB;
   uniform float uNoiseAmpY;
@@ -172,8 +330,7 @@ const vertexShader = `
 
     float waveA = sin(p.x * 1.15 + uTime * 0.95 + uPhase) * uWaveAmpA;
     float waveB = sin(p.x * 2.85 - uTime * 0.62 + uPhase * 1.2) * uWaveAmpB;
-    float nRaw = fbm(vec2(p.x * uNoiseScaleX + uTime * 0.16 + uPhase * 0.5, p.y * uNoiseScaleY - uTime * 0.08));
-    float n = mix(0.5, nRaw, uNoiseMix);
+    float n = fbm(vec2(p.x * uNoiseScaleX + uTime * 0.16 + uPhase * 0.5, p.y * uNoiseScaleY - uTime * 0.08));
 
     p.y += waveA + waveB + (n - 0.5) * uNoiseAmpY * body;
     p.z += (n - 0.5) * uDepthNoiseAmp * body + sin(p.x * 0.55 - uTime * 0.5 + uPhase) * uDepthWaveAmp * body;
@@ -211,6 +368,7 @@ const fragmentShader = `
 
 const ribbons = [];
 const waveGroup = new THREE.Group();
+waveGroup.scale.setScalar(PARAMS.globalScale);
 scene.add(waveGroup);
 
 for (let i = 0; i < PARAMS.layerCount; i++) {
@@ -222,7 +380,6 @@ for (let i = 0; i < PARAMS.layerCount; i++) {
     uniforms: {
       uTime: { value: 0 },
       uPhase: { value: i * PARAMS.layerPhaseStep },
-      uNoiseMix: { value: 1.0 },
       uColorA: { value: colorA },
       uColorB: { value: colorB },
       uOpacity: { value: PARAMS.baseOpacity - t * PARAMS.opacityFalloff },
@@ -257,75 +414,6 @@ for (let i = 0; i < PARAMS.layerCount; i++) {
   waveGroup.add(ribbon);
 }
 
-const debugOverlay = document.createElement("div");
-debugOverlay.style.position = "fixed";
-debugOverlay.style.top = "12px";
-debugOverlay.style.left = "12px";
-debugOverlay.style.padding = "10px 12px";
-debugOverlay.style.background = "rgba(0, 0, 0, 0.6)";
-debugOverlay.style.color = "#f2d8a7";
-debugOverlay.style.font = "12px/1.4 monospace";
-debugOverlay.style.border = "1px solid rgba(255, 205, 130, 0.4)";
-debugOverlay.style.borderRadius = "8px";
-debugOverlay.style.pointerEvents = "none";
-debugOverlay.style.zIndex = "10";
-document.body.appendChild(debugOverlay);
-
-function updateDebugView() {
-  const centerIndex = Math.floor(PARAMS.layerCount * 0.5);
-
-  for (let i = 0; i < ribbons.length; i++) {
-    const ribbon = ribbons[i];
-    const material = ribbon.material;
-    const visible = !PARAMS.debug.singleLayer || i === centerIndex;
-
-    ribbon.visible = visible;
-    material.wireframe = PARAMS.debug.wireframe;
-    material.uniforms.uNoiseMix.value = PARAMS.debug.disableNoise ? 0.0 : 1.0;
-  }
-
-  debugOverlay.style.display = PARAMS.debug.enabled && PARAMS.debug.showOverlay ? "block" : "none";
-  debugOverlay.textContent =
-    "Debug Mode\n" +
-    "1: toggle debug\n" +
-    "2: wireframe = " + PARAMS.debug.wireframe + "\n" +
-    "3: single layer = " + PARAMS.debug.singleLayer + "\n" +
-    "4: noise off = " + PARAMS.debug.disableNoise + "\n" +
-    "5: pause = " + PARAMS.debug.pause + "\n" +
-    "h: show or hide this";
-}
-
-window.addEventListener("keydown", (event) => {
-  const key = event.key.toLowerCase();
-
-  if (key === "1") {
-    PARAMS.debug.enabled = !PARAMS.debug.enabled;
-  }
-
-  if (key === "h") {
-    PARAMS.debug.showOverlay = !PARAMS.debug.showOverlay;
-  }
-
-  if (!PARAMS.debug.enabled) {
-    updateDebugView();
-    return;
-  }
-
-  if (key === "2") {
-    PARAMS.debug.wireframe = !PARAMS.debug.wireframe;
-  } else if (key === "3") {
-    PARAMS.debug.singleLayer = !PARAMS.debug.singleLayer;
-  } else if (key === "4") {
-    PARAMS.debug.disableNoise = !PARAMS.debug.disableNoise;
-  } else if (key === "5") {
-    PARAMS.debug.pause = !PARAMS.debug.pause;
-  }
-
-  updateDebugView();
-});
-
-updateDebugView();
-
 const ambientLight = new THREE.AmbientLight(0xffd9a8, 0.45);
 scene.add(ambientLight);
 
@@ -344,46 +432,56 @@ window.addEventListener("resize", onWindowResize);
 const clock = new THREE.Clock();
 const tempColorA = new THREE.Color();
 const tempColorB = new THREE.Color();
+let flowTime = 0;
+let swayTime = 0;
+updateTargetFromDimensions();
+createMeaningfulMixerUI();
 
 function animate() {
   requestAnimationFrame(animate);
-  if (PARAMS.debug.pause) {
-    controls.update();
-    renderer.render(scene, camera);
-    return;
-  }
+  updateTargetFromDimensions();
+  const deltaTime = clock.getDelta();
+  smoothActiveParams(deltaTime);
 
-  const time = clock.getElapsedTime();
-  const slowTime = time * PARAMS.speed;
+  flowTime += deltaTime * ACTIVE.flowSpeed;
+  swayTime += deltaTime * ACTIVE.swaySpeed;
 
   for (let i = 0; i < ribbons.length; i++) {
     const ribbon = ribbons[i];
     const uniforms = ribbon.material.uniforms;
     const t = ribbon.userData.layerT;
+    const centered = i - (PARAMS.layerCount - 1) * 0.5;
 
     getLayerColors(t, tempColorA, tempColorB);
 
-    uniforms.uTime.value = slowTime;
+    uniforms.uTime.value = flowTime;
     uniforms.uColorA.value.copy(tempColorA);
     uniforms.uColorB.value.copy(tempColorB);
-    uniforms.uOpacity.value = PARAMS.baseOpacity - t * PARAMS.opacityFalloff;
+    uniforms.uOpacity.value = ACTIVE.baseOpacity - t * ACTIVE.opacityFalloff;
 
-    uniforms.uWaveAmpA.value = PARAMS.waveAmpA;
-    uniforms.uWaveAmpB.value = PARAMS.waveAmpB;
-    uniforms.uNoiseAmpY.value = PARAMS.noiseAmpY;
-    uniforms.uNoiseScaleX.value = PARAMS.noiseScaleX;
-    uniforms.uNoiseScaleY.value = PARAMS.noiseScaleY;
-    uniforms.uDepthNoiseAmp.value = PARAMS.depthNoiseAmp;
-    uniforms.uDepthWaveAmp.value = PARAMS.depthWaveAmp;
-    uniforms.uFilamentDensity.value = PARAMS.filamentDensity;
-    uniforms.uFilamentSharpness.value = PARAMS.filamentSharpness;
-    uniforms.uShimmerFrequency.value = PARAMS.shimmerFrequency;
+    uniforms.uPhase.value = i * ACTIVE.layerPhaseStep;
+
+    uniforms.uWaveAmpA.value = ACTIVE.waveAmpA;
+    uniforms.uWaveAmpB.value = ACTIVE.waveAmpB;
+    uniforms.uNoiseAmpY.value = ACTIVE.noiseAmpY;
+    uniforms.uNoiseScaleX.value = ACTIVE.noiseScaleX;
+    uniforms.uNoiseScaleY.value = ACTIVE.noiseScaleY;
+    uniforms.uDepthNoiseAmp.value = ACTIVE.depthNoiseAmp;
+    uniforms.uDepthWaveAmp.value = ACTIVE.depthWaveAmp;
+    uniforms.uFilamentDensity.value = ACTIVE.filamentDensity;
+    uniforms.uFilamentSharpness.value = ACTIVE.filamentSharpness;
+    uniforms.uShimmerFrequency.value = ACTIVE.shimmerFrequency;
+
+    ribbon.position.y = centered * ACTIVE.layerYOffset;
+    ribbon.position.x = centered * ACTIVE.layerXOffset;
+    ribbon.rotation.z = centered * ACTIVE.layerTilt;
+    ribbon.scale.setScalar(1.0 - i * ACTIVE.layerScaleFalloff);
   }
 
   controls.update();
 
-  waveGroup.rotation.y = Math.sin(slowTime * PARAMS.sceneSwayYSpeed) * PARAMS.sceneSwayYAmount;
-  waveGroup.rotation.x = PARAMS.baseRotationX + Math.sin(slowTime * PARAMS.sceneSwayXSpeed) * PARAMS.sceneSwayXAmount;
+  waveGroup.rotation.y = Math.sin(swayTime * ACTIVE.sceneSwayYSpeed) * ACTIVE.sceneSwayYAmount;
+  waveGroup.rotation.x = ACTIVE.baseRotationX + Math.sin(swayTime * ACTIVE.sceneSwayXSpeed) * ACTIVE.sceneSwayXAmount;
 
   renderer.render(scene, camera);
 }
