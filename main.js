@@ -214,6 +214,92 @@ function createMeaningfulMixerUI() {
   panel.style.zIndex = "20";
   panel.style.backdropFilter = "blur(4px)";
 
+  // Collapsible panel settings
+  let isCollapsed = localStorage.getItem("panel-collapsed") === "true";
+
+  const toggleBtn = document.createElement("button");
+  toggleBtn.style.position = "absolute";
+  toggleBtn.style.left = "-36px";
+  toggleBtn.style.top = "12px";
+  toggleBtn.style.width = "36px";
+  toggleBtn.style.height = "36px";
+  toggleBtn.style.background = "rgba(0, 0, 0, 0.62)";
+  toggleBtn.style.border = "1px solid rgba(255, 200, 120, 0.35)";
+  toggleBtn.style.borderRight = "none";
+  toggleBtn.style.borderRadius = "8px 0 0 8px";
+  toggleBtn.style.color = "#ffd7a1";
+  toggleBtn.style.cursor = "pointer";
+  toggleBtn.style.display = "flex";
+  toggleBtn.style.alignItems = "center";
+  toggleBtn.style.justifyContent = "center";
+  toggleBtn.style.backdropFilter = "blur(4px)";
+  toggleBtn.style.outline = "none";
+  toggleBtn.style.padding = "0";
+
+  toggleBtn.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  `;
+  const svg = toggleBtn.querySelector("svg");
+
+  toggleBtn.addEventListener("mouseenter", () => {
+    toggleBtn.style.background = "rgba(0, 0, 0, 0.8)";
+    toggleBtn.style.borderColor = "rgba(255, 200, 120, 0.6)";
+  });
+  toggleBtn.addEventListener("mouseleave", () => {
+    toggleBtn.style.background = "rgba(0, 0, 0, 0.62)";
+    toggleBtn.style.borderColor = "rgba(255, 200, 120, 0.35)";
+  });
+
+  function setCollapsed(collapsed) {
+    isCollapsed = collapsed;
+    localStorage.setItem("panel-collapsed", String(isCollapsed));
+    if (isCollapsed) {
+      panel.style.transform = "translateX(calc(100% + 12px))";
+      svg.style.transform = "rotate(180deg)";
+    } else {
+      panel.style.transform = "translateX(0)";
+      svg.style.transform = "rotate(0deg)";
+    }
+  }
+
+  toggleBtn.addEventListener("click", () => {
+    setCollapsed(!isCollapsed);
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Space") {
+      const active = document.activeElement;
+      if (active && (
+        active.tagName === "INPUT" ||
+        active.tagName === "TEXTAREA" ||
+        active.tagName === "SELECT" ||
+        active.isContentEditable
+      )) {
+        return;
+      }
+      e.preventDefault();
+      setCollapsed(!isCollapsed);
+    }
+  });
+
+  // Set initial state without animation
+  if (isCollapsed) {
+    panel.style.transform = "translateX(calc(100% + 12px))";
+    svg.style.transform = "rotate(180deg)";
+  } else {
+    panel.style.transform = "translateX(0)";
+    svg.style.transform = "rotate(0deg)";
+  }
+
+  requestAnimationFrame(() => {
+    panel.style.transition = "transform 0.4s cubic-bezier(0.16, 1, 0.3, 1)";
+  });
+
+  panel.appendChild(toggleBtn);
+
+
   function addSectionHeader(labelText) {
     const header = document.createElement("div");
     header.textContent = labelText;
