@@ -746,3 +746,25 @@ function animate() {
 }
 
 animate();
+
+// Poll the local server for latest AI updates
+function pollAIUpdates() {
+  fetch('/api/latest')
+    .then(response => response.json())
+    .then(data => {
+      if (data && Object.keys(data).length > 0) {
+        console.log("Received live parameters from AI:", data);
+        for (const key in data) {
+          if (key in PARAMS.emotionDimensions) {
+            PARAMS.emotionDimensions[key] = Number(data[key]);
+          }
+        }
+        updateTargetFromDimensions();
+      }
+    })
+    .catch(err => {
+      // Silently ignore connection errors to prevent console flooding
+    });
+}
+// Check every 100 milliseconds
+setInterval(pollAIUpdates, 1000);
