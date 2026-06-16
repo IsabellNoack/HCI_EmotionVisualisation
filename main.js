@@ -13,7 +13,7 @@ const PARAMS = {
   layerCount: 6,
   baseRotationX: -Math.PI * 0.5,
 
-  emotionDimensions: {
+  dimensions: {
     energy: 0.45,
     turbulence: 0.45,
     depth: 0.55,
@@ -44,7 +44,7 @@ const PARAMS = {
 };
 
 window.WAVE_PARAMS = PARAMS;
-window.EMOTION_DIMENSIONS = PARAMS.emotionDimensions;
+window.DIMENSIONS = PARAMS.dimensions;
 window.DEBUG_OPTIONS = PARAMS.debug;
 
 const ACTIVE = {
@@ -120,7 +120,7 @@ const BLEND_KEYS = [
 ];
 
 function updateTargetFromDimensions() {
-  const d = PARAMS.emotionDimensions;
+  const d = PARAMS.dimensions;
   const energy = THREE.MathUtils.clamp(d.energy, 0, 1);
   const turbulence = THREE.MathUtils.clamp(d.turbulence, 0, 1);
   const depth = THREE.MathUtils.clamp(d.depth, 0, 1);
@@ -454,14 +454,14 @@ function createMeaningfulMixerUI() {
     input.min = String(min);
     input.max = String(max);
     input.step = String(step);
-    input.value = String(PARAMS.emotionDimensions[key]);
+    input.value = String(PARAMS.dimensions[key]);
 
     const value = document.createElement("span");
-    value.textContent = formatValue(PARAMS.emotionDimensions[key]);
+    value.textContent = formatValue(PARAMS.dimensions[key]);
     value.style.textAlign = "right";
 
     input.addEventListener("input", () => {
-      PARAMS.emotionDimensions[key] = Number(input.value);
+      PARAMS.dimensions[key] = Number(input.value);
       value.textContent = formatValue(Number(input.value));
       updateTargetFromDimensions();
     });
@@ -480,9 +480,9 @@ function createMeaningfulMixerUI() {
         const steps = Math.round(range / step);
         const randomStep = Math.floor(rand * (steps + 1));
         const val = rMin + Math.min(randomStep, steps) * step;
-        PARAMS.emotionDimensions[key] = Number(val.toFixed(5));
-        input.value = String(PARAMS.emotionDimensions[key]);
-        value.textContent = formatValue(PARAMS.emotionDimensions[key]);
+        PARAMS.dimensions[key] = Number(val.toFixed(5));
+        input.value = String(PARAMS.dimensions[key]);
+        value.textContent = formatValue(PARAMS.dimensions[key]);
       }
     });
   }
@@ -718,7 +718,7 @@ function addRibbon(index, total) {
       uPhase: { value: index * PARAMS.layerPhaseStep },
       uColorA: { value: colorA },
       uColorB: { value: colorB },
-      uOpacity: { value: (PARAMS.baseOpacity - t * PARAMS.opacityFalloff) * (PARAMS.emotionDimensions.alphaMultiplier !== undefined ? PARAMS.emotionDimensions.alphaMultiplier : 1.0) },
+      uOpacity: { value: (PARAMS.baseOpacity - t * PARAMS.opacityFalloff) * (PARAMS.dimensions.alphaMultiplier !== undefined ? PARAMS.dimensions.alphaMultiplier : 1.0) },
       uWaveAmpA: { value: PARAMS.waveAmpA },
       uWaveAmpB: { value: PARAMS.waveAmpB },
       uNoiseAmpY: { value: PARAMS.noiseAmpY },
@@ -729,7 +729,7 @@ function addRibbon(index, total) {
       uFilamentDensity: { value: PARAMS.filamentDensity },
       uFilamentSharpness: { value: PARAMS.filamentSharpness },
       uShimmerFrequency: { value: PARAMS.shimmerFrequency },
-      uShimmerAmount: { value: PARAMS.emotionDimensions.shimmerAmount !== undefined ? PARAMS.emotionDimensions.shimmerAmount : 0.7 },
+      uShimmerAmount: { value: PARAMS.dimensions.shimmerAmount !== undefined ? PARAMS.dimensions.shimmerAmount : 0.7 },
       uBandCount: { value: ACTIVE.bandCount },
       uBandSpacing: { value: ACTIVE.bandSpacing },
       uBandSharpness: { value: ACTIVE.bandSharpness },
@@ -807,7 +807,7 @@ function animate() {
   cameraPanTime += deltaTime;
 
   const centerLayer = Math.floor((ribbons.length - 1) * 0.5);
-  const forceSingleLine = Math.round(PARAMS.emotionDimensions.lineCount) <= 1;
+  const forceSingleLine = Math.round(PARAMS.dimensions.lineCount) <= 1;
 
   for (let i = 0; i < ribbons.length; i++) {
     const ribbon = ribbons[i];
@@ -883,8 +883,8 @@ function pollAIUpdates() {
       if (data && Object.keys(data).length > 0) {
         console.log("Received live parameters from AI:", data);
         for (const key in data) {
-          if (key in PARAMS.emotionDimensions) {
-            PARAMS.emotionDimensions[key] = Number(data[key]);
+          if (key in PARAMS.dimensions) {
+            PARAMS.dimensions[key] = Number(data[key]);
           }
         }
         updateTargetFromDimensions();
