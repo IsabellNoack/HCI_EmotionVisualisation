@@ -28,7 +28,8 @@ const PARAMS = {
     saturation: 0.78,
     openness: 0.55,
     softness: 0.5,
-    glow: 1
+    glow: 1.0,
+    shimmerAmount: 0.7
   },
 
   debug: {
@@ -36,7 +37,8 @@ const PARAMS = {
     wireframe: false,
     singleLayer: false,
     noNoise: false,
-    noSway: false
+    noSway: false,
+    additive: true
   }
 };
 
@@ -73,7 +75,9 @@ const ACTIVE = {
   bandSharpness: 0.8,
   bandFill: 0.18,
   baseRotationX: PARAMS.baseRotationX,
-  baseRgb: { r: 240, g: 180, b: 95 }
+  baseRgb: { r: 240, g: 180, b: 95 },
+  shimmerAmount: 0.7,
+  alphaMultiplier: 1.0
 };
 
 const TARGET = {
@@ -109,7 +113,9 @@ const BLEND_KEYS = [
   "bandSpacing",
   "bandSharpness",
   "bandFill",
-  "baseRotationX"
+  "baseRotationX",
+  "shimmerAmount",
+  "alphaMultiplier"
 ];
 
 function updateTargetFromDimensions() {
@@ -128,7 +134,8 @@ function updateTargetFromDimensions() {
   const saturation = THREE.MathUtils.clamp(d.saturation, 0, 1);
   const openness = THREE.MathUtils.clamp(d.openness, 0, 1);
   const softness = THREE.MathUtils.clamp(d.softness, 0, 1);
-  const glow = THREE.MathUtils.clamp(d.glow, 0, 1);
+  const glow = THREE.MathUtils.clamp(d.glow, 0, 2);
+  const shimmerAmount = THREE.MathUtils.clamp(d.shimmerAmount !== undefined ? d.shimmerAmount : 0.7, 0, 1);
 
   TARGET.flowSpeed = THREE.MathUtils.lerp(0.0, 1.45, energy);
   TARGET.swaySpeed = THREE.MathUtils.lerp(0.0, 0.18, energy);
@@ -148,7 +155,7 @@ function updateTargetFromDimensions() {
   TARGET.noiseScaleY = THREE.MathUtils.lerp(0.0, 3.0, turbulence);
   TARGET.depthNoiseAmp = THREE.MathUtils.lerp(0.0, 3.2, turbulence * depth);
 
-  TARGET.baseOpacity = THREE.MathUtils.lerp(0.25, 0.7, glow);
+  TARGET.baseOpacity = THREE.MathUtils.lerp(0.25, 1.0, Math.min(glow, 1.0));
   TARGET.opacityFalloff = THREE.MathUtils.lerp(0.01, 0.024, 1.0 - openness);
   TARGET.filamentDensity = THREE.MathUtils.lerp(12, 72, detail);
   TARGET.filamentSharpness = THREE.MathUtils.lerp(8, 30, detail * (1.0 - softness * 0.5));
@@ -170,10 +177,13 @@ function updateTargetFromDimensions() {
   const satG = gray + (green - gray) * saturation;
   const satB = gray + (blue - gray) * saturation;
 
-  const brightness = THREE.MathUtils.lerp(0.25, 1.0, glow);
+  const brightness = THREE.MathUtils.lerp(0.25, 1.0, Math.min(glow, 1.0));
   TARGET.baseRgb.r = satR * brightness * 255;
   TARGET.baseRgb.g = satG * brightness * 255;
   TARGET.baseRgb.b = satB * brightness * 255;
+
+  TARGET.shimmerAmount = shimmerAmount;
+  TARGET.alphaMultiplier = glow;
 }
 
 function smoothActiveParams(deltaSeconds) {
@@ -428,7 +438,8 @@ function createMeaningfulMixerUI() {
   addDimensionSlider("green", "green");
   addDimensionSlider("blue", "blue");
   addDimensionSlider("saturation", "saturation");
-  addDimensionSlider("glow", "glow");
+  addSlider("glow", "glow", 0, 2, 0.01, (v) => v.toFixed(2));
+  addDimensionSlider("shimmerAmount", "shimmer");
 
   addSectionHeader("Debug");
   addDebugCheckbox("freeze", "freeze motion");
@@ -436,6 +447,7 @@ function createMeaningfulMixerUI() {
   addDebugCheckbox("singleLayer", "single layer");
   addDebugCheckbox("noNoise", "disable noise");
   addDebugCheckbox("noSway", "disable sway");
+  addDebugCheckbox("additive", "additive blending");
 
   document.body.appendChild(panel);
 }
@@ -545,6 +557,7 @@ const fragmentShader = `
   uniform float uFilamentDensity;
   uniform float uFilamentSharpness;
   uniform float uShimmerFrequency;
+  uniform float uShimmerAmount;
   uniform float uBandCount;
   uniform float uBandSpacing;
   uniform float uBandSharpness;
@@ -571,7 +584,7 @@ const fragmentShader = `
     float bandMask = mix(coreBand, 1.0, clamp(uBandFill, 0.0, 1.0)) * countMask;
 
     float filaments = pow(abs(sin((vUv.y * uFilamentDensity + vUv.x * 2.4 + uTime * 0.72 + vNoise * 0.9) * 3.14159)), uFilamentSharpness);
-    float shimmer = 0.65 + 0.35 * sin(vUv.x * uShimmerFrequency + uTime * 1.7 + vNoise * 4.0);
+    float shimmer = mix(1.0, 0.5 + 0.5 * sin(vUv.x * uShimmerFrequency + uTime * 1.7 + vNoise * 4.0), uShimmerAmount);
     float fill = clamp(uBandFill, 0.0, 1.0);
     float textureMask = mix(0.18 + filaments * 0.82, 1.0, fill);
 
@@ -608,7 +621,7 @@ function addRibbon(index, total) {
       uPhase: { value: index * PARAMS.layerPhaseStep },
       uColorA: { value: colorA },
       uColorB: { value: colorB },
-      uOpacity: { value: PARAMS.baseOpacity - t * PARAMS.opacityFalloff },
+      uOpacity: { value: (PARAMS.baseOpacity - t * PARAMS.opacityFalloff) * (PARAMS.emotionDimensions.alphaMultiplier !== undefined ? PARAMS.emotionDimensions.alphaMultiplier : 1.0) },
       uWaveAmpA: { value: PARAMS.waveAmpA },
       uWaveAmpB: { value: PARAMS.waveAmpB },
       uNoiseAmpY: { value: PARAMS.noiseAmpY },
@@ -619,6 +632,7 @@ function addRibbon(index, total) {
       uFilamentDensity: { value: PARAMS.filamentDensity },
       uFilamentSharpness: { value: PARAMS.filamentSharpness },
       uShimmerFrequency: { value: PARAMS.shimmerFrequency },
+      uShimmerAmount: { value: PARAMS.emotionDimensions.shimmerAmount !== undefined ? PARAMS.emotionDimensions.shimmerAmount : 0.7 },
       uBandCount: { value: ACTIVE.bandCount },
       uBandSpacing: { value: ACTIVE.bandSpacing },
       uBandSharpness: { value: ACTIVE.bandSharpness },
@@ -703,13 +717,14 @@ function animate() {
 
     ribbon.visible = (!PARAMS.debug.singleLayer && !forceSingleLine) || i === centerLayer;
     ribbon.material.wireframe = PARAMS.debug.wireframe;
+    ribbon.material.blending = PARAMS.debug.additive ? THREE.AdditiveBlending : THREE.NormalBlending;
 
     getLayerColors(t, tempColorA, tempColorB);
 
     uniforms.uTime.value = flowTime;
     uniforms.uColorA.value.copy(tempColorA);
     uniforms.uColorB.value.copy(tempColorB);
-    uniforms.uOpacity.value = ACTIVE.baseOpacity - t * ACTIVE.opacityFalloff;
+    uniforms.uOpacity.value = (ACTIVE.baseOpacity - t * ACTIVE.opacityFalloff) * ACTIVE.alphaMultiplier;
 
     uniforms.uPhase.value = i * ACTIVE.layerPhaseStep;
 
@@ -723,6 +738,7 @@ function animate() {
     uniforms.uFilamentDensity.value = ACTIVE.filamentDensity;
     uniforms.uFilamentSharpness.value = ACTIVE.filamentSharpness;
     uniforms.uShimmerFrequency.value = ACTIVE.shimmerFrequency;
+    uniforms.uShimmerAmount.value = ACTIVE.shimmerAmount;
     uniforms.uBandCount.value = ACTIVE.bandCount;
     uniforms.uBandSpacing.value = ACTIVE.bandSpacing;
     uniforms.uBandSharpness.value = ACTIVE.bandSharpness;
