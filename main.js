@@ -343,18 +343,18 @@ function createMeaningfulMixerUI() {
 
   randomizeBtn.addEventListener("mouseenter", () => {
     randomizeBtn.style.background = "transparent";
-    randomizeBtn.style.color = "#ffb570";
+    randomizeBtn.style.border = "2px solid rgba(255, 215, 161, 0.85)";
+    randomizeBtn.style.padding = "7px 11px";
     randomizeBtn.style.boxShadow = "0 0 12px rgba(255, 215, 161, 0.4)";
     randomizeBtn.style.transform = "translateY(-1px)";
-    randomizeBtn.style.borderColor = "#ffb570";
   });
 
   randomizeBtn.addEventListener("mouseleave", () => {
     randomizeBtn.style.background = "transparent";
-    randomizeBtn.style.color = "#ffd7a1";
+    randomizeBtn.style.border = "1px solid rgba(255, 215, 161, 0.5)";
+    randomizeBtn.style.padding = "8px 12px";
     randomizeBtn.style.boxShadow = "0 0 4px rgba(255, 215, 161, 0.05)";
     randomizeBtn.style.transform = "translateY(0)";
-    randomizeBtn.style.borderColor = "rgba(255, 215, 161, 0.5)";
   });
 
   randomizeBtn.addEventListener("mousedown", () => {
