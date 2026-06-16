@@ -38,7 +38,8 @@ const PARAMS = {
     singleLayer: false,
     noNoise: false,
     noSway: false,
-    additive: true
+    additive: true,
+    cameraPan: false
   }
 };
 
@@ -214,7 +215,6 @@ function createMeaningfulMixerUI() {
   panel.style.right = "12px";
   panel.style.top = "12px";
   panel.style.width = "300px";
-  panel.style.padding = "10px";
   panel.style.boxSizing = "border-box";
   panel.style.background = "rgba(0, 0, 0, 0.62)";
   panel.style.border = "1px solid rgba(255, 200, 120, 0.35)";
@@ -223,6 +223,15 @@ function createMeaningfulMixerUI() {
   panel.style.font = "12px/1.3 monospace";
   panel.style.zIndex = "20";
   panel.style.backdropFilter = "blur(4px)";
+
+  const contentWrapper = document.createElement("div");
+  contentWrapper.className = "ui-panel-content";
+  contentWrapper.style.maxHeight = "calc(100vh - 24px)";
+  contentWrapper.style.overflowY = "auto";
+  contentWrapper.style.padding = "10px";
+  contentWrapper.style.boxSizing = "border-box";
+  contentWrapper.style.scrollbarWidth = "thin";
+  contentWrapper.style.scrollbarColor = "rgba(255, 200, 120, 0.3) rgba(0, 0, 0, 0.2)";
 
   // Collapsible panel settings
   let isCollapsed = localStorage.getItem("panel-collapsed") === "true";
@@ -308,7 +317,62 @@ function createMeaningfulMixerUI() {
   });
 
   panel.appendChild(toggleBtn);
+  panel.appendChild(contentWrapper);
 
+  const sliders = [];
+
+  const randomizeBtn = document.createElement("button");
+  randomizeBtn.textContent = "Randomize";
+  randomizeBtn.style.width = "100%";
+  randomizeBtn.style.padding = "8px 12px";
+  randomizeBtn.style.marginTop = "14px";
+  randomizeBtn.style.marginBottom = "0px";
+  randomizeBtn.style.background = "transparent";
+  randomizeBtn.style.border = "1px solid rgba(255, 215, 161, 0.5)";
+  randomizeBtn.style.borderRadius = "6px";
+  randomizeBtn.style.color = "#ffd7a1";
+  randomizeBtn.style.font = "bold 11px monospace";
+  randomizeBtn.style.cursor = "pointer";
+  randomizeBtn.style.transition = "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)";
+  randomizeBtn.style.letterSpacing = "1px";
+  randomizeBtn.style.textTransform = "uppercase";
+  randomizeBtn.style.boxShadow = "0 0 4px rgba(255, 215, 161, 0.05)";
+  randomizeBtn.style.outline = "none";
+
+  randomizeBtn.addEventListener("mouseenter", () => {
+    randomizeBtn.style.background = "transparent";
+    randomizeBtn.style.color = "#ffb570";
+    randomizeBtn.style.boxShadow = "0 0 12px rgba(255, 215, 161, 0.4)";
+    randomizeBtn.style.transform = "translateY(-1px)";
+    randomizeBtn.style.borderColor = "#ffb570";
+  });
+
+  randomizeBtn.addEventListener("mouseleave", () => {
+    randomizeBtn.style.background = "transparent";
+    randomizeBtn.style.color = "#ffd7a1";
+    randomizeBtn.style.boxShadow = "0 0 4px rgba(255, 215, 161, 0.05)";
+    randomizeBtn.style.transform = "translateY(0)";
+    randomizeBtn.style.borderColor = "rgba(255, 215, 161, 0.5)";
+  });
+
+  randomizeBtn.addEventListener("mousedown", () => {
+    randomizeBtn.style.transform = "translateY(1px)";
+    randomizeBtn.style.boxShadow = "0 0 6px rgba(255, 215, 161, 0.2)";
+  });
+
+  randomizeBtn.addEventListener("mouseup", () => {
+    randomizeBtn.style.transform = "translateY(-1px)";
+  });
+
+  randomizeBtn.addEventListener("click", () => {
+    randomizeBtn.style.transform = "scale(0.95)";
+    setTimeout(() => {
+      randomizeBtn.style.transform = "translateY(-1px)";
+    }, 100);
+
+    sliders.forEach(s => s.randomize());
+    updateTargetFromDimensions();
+  });
 
   function addSectionHeader(labelText) {
     const header = document.createElement("div");
@@ -319,14 +383,14 @@ function createMeaningfulMixerUI() {
     header.style.opacity = "0.95";
     header.style.letterSpacing = "0.2px";
     header.style.textAlign = "center";
-    panel.appendChild(header);
+    contentWrapper.appendChild(header);
   }
 
-  function addDimensionSlider(key, labelText) {
-    addSlider(key, labelText, 0, 1, 0.01, (v) => v.toFixed(2));
+  function addDimensionSlider(key, labelText, skewPower = 1) {
+    addSlider(key, labelText, 0, 1, 0.01, (v) => v.toFixed(2), skewPower);
   }
 
-  function addParamSlider(key, labelText, min, max, step, formatValue) {
+  function addParamSlider(key, labelText, min, max, step, formatValue, skewPower = 1, randomMin = null, randomMax = null) {
     const row = document.createElement("label");
     row.style.display = "grid";
     row.style.gridTemplateColumns = "76px minmax(0, 1fr) 44px";
@@ -356,10 +420,25 @@ function createMeaningfulMixerUI() {
     row.appendChild(name);
     row.appendChild(input);
     row.appendChild(value);
-    panel.appendChild(row);
+    contentWrapper.appendChild(row);
+
+    sliders.push({
+      randomize: () => {
+        const rMin = randomMin !== null ? randomMin : min;
+        const rMax = randomMax !== null ? randomMax : max;
+        const rand = Math.pow(Math.random(), skewPower);
+        const range = rMax - rMin;
+        const steps = Math.round(range / step);
+        const randomStep = Math.floor(rand * (steps + 1));
+        const val = rMin + Math.min(randomStep, steps) * step;
+        PARAMS[key] = Number(val.toFixed(5));
+        input.value = String(PARAMS[key]);
+        value.textContent = formatValue(PARAMS[key]);
+      }
+    });
   }
 
-  function addSlider(key, labelText, min, max, step, formatValue) {
+  function addSlider(key, labelText, min, max, step, formatValue, skewPower = 1, randomMin = null, randomMax = null) {
     const row = document.createElement("label");
     row.style.display = "grid";
     row.style.gridTemplateColumns = "76px minmax(0, 1fr) 44px";
@@ -390,7 +469,22 @@ function createMeaningfulMixerUI() {
     row.appendChild(name);
     row.appendChild(input);
     row.appendChild(value);
-    panel.appendChild(row);
+    contentWrapper.appendChild(row);
+
+    sliders.push({
+      randomize: () => {
+        const rMin = randomMin !== null ? randomMin : min;
+        const rMax = randomMax !== null ? randomMax : max;
+        const rand = Math.pow(Math.random(), skewPower);
+        const range = rMax - rMin;
+        const steps = Math.round(range / step);
+        const randomStep = Math.floor(rand * (steps + 1));
+        const val = rMin + Math.min(randomStep, steps) * step;
+        PARAMS.emotionDimensions[key] = Number(val.toFixed(5));
+        input.value = String(PARAMS.emotionDimensions[key]);
+        value.textContent = formatValue(PARAMS.emotionDimensions[key]);
+      }
+    });
   }
 
   function addDebugCheckbox(key, labelText) {
@@ -413,7 +507,7 @@ function createMeaningfulMixerUI() {
 
     row.appendChild(name);
     row.appendChild(input);
-    panel.appendChild(row);
+    contentWrapper.appendChild(row);
   }
 
   addSectionHeader("Dynamics");
@@ -426,7 +520,7 @@ function createMeaningfulMixerUI() {
   addSlider("lineCount", "count", 1, 5, 1, (v) => String(Math.round(v) * 2 - 1));
   addSlider("lineSpacing", "spacing", 0, 1, 0.005, (v) => Number(v).toFixed(3));
   addDimensionSlider("lineSharpness", "sharpness");
-  addDimensionSlider("lineFill", "fill");
+  addDimensionSlider("lineFill", "fill", 2.2);
 
   addSectionHeader("Form");
   addParamSlider("layerCount", "layers", 1, 16, 1, (v) => String(Math.round(v)));
@@ -438,7 +532,7 @@ function createMeaningfulMixerUI() {
   addDimensionSlider("green", "green");
   addDimensionSlider("blue", "blue");
   addDimensionSlider("saturation", "saturation");
-  addSlider("glow", "glow", 0, 2, 0.01, (v) => v.toFixed(2));
+  addSlider("glow", "glow", 0, 2, 0.01, (v) => v.toFixed(2), 1, 1, 2);
   addDimensionSlider("shimmerAmount", "shimmer");
 
   addSectionHeader("Debug");
@@ -448,6 +542,9 @@ function createMeaningfulMixerUI() {
   addDebugCheckbox("noNoise", "disable noise");
   addDebugCheckbox("noSway", "disable sway");
   addDebugCheckbox("additive", "additive blending");
+  addDebugCheckbox("cameraPan", "lazy camera rotation");
+
+  contentWrapper.appendChild(randomizeBtn);
 
   document.body.appendChild(panel);
 }
@@ -689,6 +786,8 @@ const tempColorA = new THREE.Color();
 const tempColorB = new THREE.Color();
 let flowTime = 0;
 let swayTime = 0;
+let cameraPanTime = 0;
+let wasPanning = false;
 updateTargetFromDimensions();
 createMeaningfulMixerUI();
 
@@ -705,6 +804,7 @@ function animate() {
     flowTime += deltaTime * ACTIVE.flowSpeed;
     swayTime += deltaTime * ACTIVE.swaySpeed;
   }
+  cameraPanTime += deltaTime;
 
   const centerLayer = Math.floor((ribbons.length - 1) * 0.5);
   const forceSingleLine = Math.round(PARAMS.emotionDimensions.lineCount) <= 1;
@@ -748,6 +848,16 @@ function animate() {
     ribbon.position.x = centered * ACTIVE.layerXOffset;
     ribbon.rotation.z = centered * ACTIVE.layerTilt;
     ribbon.scale.setScalar(1.0 - i * ACTIVE.layerScaleFalloff);
+  }
+
+  if (PARAMS.debug.cameraPan) {
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = -0.8; // Smooth, slow rotation
+    wasPanning = true;
+  } else if (wasPanning) {
+    controls.autoRotate = false;
+    controls.target.set(0, 0, 0);
+    wasPanning = false;
   }
 
   controls.update();
