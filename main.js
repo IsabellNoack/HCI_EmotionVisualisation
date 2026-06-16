@@ -86,6 +86,8 @@ const TARGET = {
   baseRgb: { ...ACTIVE.baseRgb }
 };
 
+const uiUpdateCallbacks = [];
+
 const BLEND_KEYS = [
   "flowSpeed",
   "swaySpeed",
@@ -412,6 +414,12 @@ function createMeaningfulMixerUI() {
     value.textContent = formatValue(PARAMS[key]);
     value.style.textAlign = "right";
 
+    const updateUI = () => {
+      input.value = String(PARAMS[key]);
+      value.textContent = formatValue(PARAMS[key]);
+    };
+    uiUpdateCallbacks.push(updateUI);
+
     input.addEventListener("input", () => {
       PARAMS[key] = Number(input.value);
       value.textContent = formatValue(PARAMS[key]);
@@ -432,8 +440,7 @@ function createMeaningfulMixerUI() {
         const randomStep = Math.floor(rand * (steps + 1));
         const val = rMin + Math.min(randomStep, steps) * step;
         PARAMS[key] = Number(val.toFixed(5));
-        input.value = String(PARAMS[key]);
-        value.textContent = formatValue(PARAMS[key]);
+        updateUI();
       }
     });
   }
@@ -460,6 +467,12 @@ function createMeaningfulMixerUI() {
     value.textContent = formatValue(PARAMS.dimensions[key]);
     value.style.textAlign = "right";
 
+    const updateUI = () => {
+      input.value = String(PARAMS.dimensions[key]);
+      value.textContent = formatValue(PARAMS.dimensions[key]);
+    };
+    uiUpdateCallbacks.push(updateUI);
+
     input.addEventListener("input", () => {
       PARAMS.dimensions[key] = Number(input.value);
       value.textContent = formatValue(Number(input.value));
@@ -481,8 +494,7 @@ function createMeaningfulMixerUI() {
         const randomStep = Math.floor(rand * (steps + 1));
         const val = rMin + Math.min(randomStep, steps) * step;
         PARAMS.dimensions[key] = Number(val.toFixed(5));
-        input.value = String(PARAMS.dimensions[key]);
-        value.textContent = formatValue(PARAMS.dimensions[key]);
+        updateUI();
       }
     });
   }
@@ -501,6 +513,12 @@ function createMeaningfulMixerUI() {
     const input = document.createElement("input");
     input.type = "checkbox";
     input.checked = PARAMS.debug[key];
+
+    const updateUI = () => {
+      input.checked = PARAMS.debug[key];
+    };
+    uiUpdateCallbacks.push(updateUI);
+
     input.addEventListener("change", () => {
       PARAMS.debug[key] = input.checked;
     });
@@ -888,6 +906,7 @@ function pollAIUpdates() {
           }
         }
         updateTargetFromDimensions();
+        uiUpdateCallbacks.forEach(cb => cb());
       }
     })
     .catch(err => {
