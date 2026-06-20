@@ -1,5 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.168.0/build/three.module.js?module";
 import { OrbitControls } from "https://unpkg.com/three@0.168.0/examples/jsm/controls/OrbitControls.js?module";
+import * as AUDIO_SYSTEM from "./audio.js";
 
 const PARAMS = {
   transitionSmoothness: 6.0,
@@ -564,6 +565,8 @@ function createMeaningfulMixerUI() {
 
   contentWrapper.appendChild(randomizeBtn);
 
+  AUDIO_SYSTEM.addMusicUI(panel, contentWrapper);
+
   document.body.appendChild(panel);
 }
 
@@ -811,12 +814,43 @@ createMeaningfulMixerUI();
 
 function animate() {
   requestAnimationFrame(animate);
+
+  // Process beat detection and apply reactive modulation
+  // Process beat detection and apply reactive modulation directly to ACTIVE for instant pulse + smooth decay
+  try { AUDIO_SYSTEM.processBeatDetection(); } catch(e) {}
+  
   updateTargetFromDimensions();
+  
+  // Apply beat-reactive pulses to ACTIVE parameters (they'll smoothly decay back toward TARGET)
+  const state = {};
+  try {
+    Object.assign(state, AUDIO_SYSTEM.getAudioState());
+  } catch(e) {}
+  
+  if (state.hasFile && state.isPlaying && state.enabled && state.beatStrength > 0.01) {
+    const s = state.beatStrength;
+    
+    // Energy reacts to beats - modulates wave amplitudes and flow speed
+    ACTIVE.waveAmpA += s * 0.35;
+    ACTIVE.flowSpeed += s * 1.8;
+    
+    // Turbulence (noise) reacts to beats - modulates noise amplitude
+    ACTIVE.noiseAmpY += s * 0.6;
+    
+    // Glow reacts to beats - modulates alpha/brightness
+    ACTIVE.alphaMultiplier += s * 0.45;
+  }
+  
   if (Math.round(PARAMS.layerCount) !== ribbons.length) {
     rebuildRibbons(PARAMS.layerCount);
   }
   const deltaTime = clock.getDelta();
   smoothActiveParams(deltaTime);
+
+  // Refresh audio UI elements each frame for BPM display and beat indicators
+  if (window._audioUIRefresh && window._audioUIRefresh !== undefined) {
+    window._audioUIRefresh();
+  }
 
   if (!PARAMS.debug.freeze) {
     flowTime += deltaTime * ACTIVE.flowSpeed;
