@@ -565,7 +565,393 @@ function createMeaningfulMixerUI() {
 
   contentWrapper.appendChild(randomizeBtn);
 
-  AUDIO_SYSTEM.addMusicUI(panel, contentWrapper);
+  // --- Advanced Music UI Section ---
+  const musicHeader = document.createElement("div");
+  musicHeader.textContent = "Music";
+  musicHeader.style.marginTop = "14px";
+  musicHeader.style.marginBottom = "6px";
+  musicHeader.style.fontWeight = "700";
+  musicHeader.style.opacity = "0.95";
+  musicHeader.style.letterSpacing = "0.2px";
+  musicHeader.style.textAlign = "center";
+  contentWrapper.appendChild(musicHeader);
+
+  // Play button and Reactive checkbox on top
+  const controlRow = document.createElement("div");
+  controlRow.style.display = "grid";
+  controlRow.style.gridTemplateColumns = "1fr auto";
+  controlRow.style.gap = "8px";
+  controlRow.style.marginTop = "8px";
+  controlRow.style.marginBottom = "8px";
+
+  const playPauseBtn = document.createElement("button");
+  playPauseBtn.textContent = "\u25B6 Play";
+  playPauseBtn.style.padding = "6px 12px";
+  playPauseBtn.style.background = "transparent";
+  playPauseBtn.style.border = "1px solid rgba(255, 215, 161, 0.4)";
+  playPauseBtn.style.borderRadius = "5px";
+  playPauseBtn.style.color = "#ffd7a1";
+  playPauseBtn.style.font = "bold 11px monospace";
+  playPauseBtn.style.cursor = "pointer";
+  playPauseBtn.style.outline = "none";
+
+  playPauseBtn.addEventListener("click", async () => {
+    const state = AUDIO_SYSTEM.getAudioState();
+    if (state.isPlaying) {
+      AUDIO_SYSTEM.pause();
+    } else {
+      await AUDIO_SYSTEM.play();
+    }
+  });
+
+  const reactiveRow = document.createElement("label");
+  reactiveRow.style.display = "flex";
+  reactiveRow.style.alignItems = "center";
+  reactiveRow.style.gap = "6px";
+  reactiveRow.style.cursor = "pointer";
+
+  const reactiveCheckbox = document.createElement("input");
+  reactiveCheckbox.type = "checkbox";
+  reactiveCheckbox.checked = false;
+
+  const reactiveLabel = document.createElement("span");
+  reactiveLabel.textContent = "Reactive";
+  reactiveLabel.style.fontSize = "11px";
+  reactiveLabel.style.opacity = "0.9";
+
+  reactiveCheckbox.addEventListener("change", () => {
+    AUDIO_SYSTEM.setEnabled(reactiveCheckbox.checked);
+  });
+
+  reactiveRow.appendChild(reactiveCheckbox);
+  reactiveRow.appendChild(reactiveLabel);
+
+  controlRow.appendChild(playPauseBtn);
+  controlRow.appendChild(reactiveRow);
+  contentWrapper.appendChild(controlRow);
+
+  // Custom File selector
+  const fileRow = document.createElement("label");
+  fileRow.style.display = "grid";
+  fileRow.style.gridTemplateColumns = "76px minmax(0, 1fr)";
+  fileRow.style.gap = "6px";
+  fileRow.style.alignItems = "center";
+  fileRow.style.margin = "6px 0";
+
+  const customLabel = document.createElement("span");
+  customLabel.textContent = "Custom File";
+  customLabel.style.opacity = "0.8";
+
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "audio/*";
+  fileInput.style.fontSize = "10px";
+  fileInput.style.color = "#ffd7a1";
+  fileInput.style.width = "100%";
+
+  const fileNameDisplay = document.createElement("span");
+  fileNameDisplay.textContent = "";
+  fileNameDisplay.style.textAlign = "right";
+  fileNameDisplay.style.opacity = "0.6";
+  fileNameDisplay.style.fontSize = "10px";
+  fileNameDisplay.style.display = "block";
+  fileNameDisplay.style.marginTop = "2px";
+
+  fileInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    let displayName = file.name.length > 20 ? file.name.substring(0, 19) + '…' : file.name;
+    fileNameDisplay.textContent = "Loading...";
+    const loaded = await AUDIO_SYSTEM.loadFile(file);
+    if (loaded) {
+      fileNameDisplay.textContent = displayName;
+    } else {
+      fileNameDisplay.textContent = "Error loading";
+    }
+  });
+
+  fileRow.appendChild(customLabel);
+  fileRow.appendChild(fileInput);
+  contentWrapper.appendChild(fileRow);
+  contentWrapper.appendChild(fileNameDisplay);
+
+  // Select Track dropdown
+  const TRACKS = [
+    { name: "Metronome 120 BPM", file: "Metronome 120 BPM - QuickSounds.com.mp3" },
+    { name: "The Infinity (120 BPM)", file: "dcpixelwelt-the-infinity-120-bpm-d-major-13108.mp3" },
+    { name: "Sad Track", file: "sad_track.mp3" },
+    { name: "Ad Infinitum - New Dawn", file: "Ad Infinitum - New Dawn.mp3" },
+    { name: "Ad Infinitum - Serpent's Downfall", file: "Ad Infinitum - The Serpent's Downfall.mp3" }
+  ];
+
+  const trackRow = document.createElement("label");
+  trackRow.style.display = "grid";
+  trackRow.style.gridTemplateColumns = "76px minmax(0, 1fr)";
+  trackRow.style.gap = "6px";
+  trackRow.style.alignItems = "center";
+  trackRow.style.margin = "6px 0";
+
+  const trackText = document.createElement("span");
+  trackText.textContent = "Select Track";
+  trackText.style.opacity = "0.8";
+
+  const trackSelect = document.createElement("select");
+  trackSelect.style.fontSize = "11px";
+  trackSelect.style.background = "rgba(0, 0, 0, 0.4)";
+  trackSelect.style.border = "1px solid rgba(255, 200, 120, 0.35)";
+  trackSelect.style.color = "#ffd7a1";
+  trackSelect.style.padding = "3px 6px";
+  trackSelect.style.borderRadius = "4px";
+  trackSelect.style.outline = "none";
+  trackSelect.style.cursor = "pointer";
+
+  TRACKS.forEach(track => {
+    const opt = document.createElement("option");
+    opt.value = track.file;
+    opt.textContent = track.name;
+    opt.style.background = "#111";
+    trackSelect.appendChild(opt);
+  });
+
+  trackSelect.addEventListener("change", async (e) => {
+    const wasPlaying = AUDIO_SYSTEM.getAudioState().isPlaying;
+    fileNameDisplay.textContent = "";
+    await AUDIO_SYSTEM.loadTrack(e.target.value);
+    if (wasPlaying) {
+      await AUDIO_SYSTEM.play();
+    }
+  });
+
+  trackRow.appendChild(trackText);
+  trackRow.appendChild(trackSelect);
+  contentWrapper.appendChild(trackRow);
+
+  // Select Source dropdown
+  const sourceRow = document.createElement("label");
+  sourceRow.style.display = "grid";
+  sourceRow.style.gridTemplateColumns = "76px minmax(0, 1fr)";
+  sourceRow.style.gap = "6px";
+  sourceRow.style.alignItems = "center";
+  sourceRow.style.margin = "6px 0";
+
+  const sourceName = document.createElement("span");
+  sourceName.textContent = "Select Source";
+  sourceName.style.opacity = "0.8";
+
+  const sourceSelect = document.createElement("select");
+  sourceSelect.style.fontSize = "11px";
+  sourceSelect.style.background = "rgba(0, 0, 0, 0.4)";
+  sourceSelect.style.border = "1px solid rgba(255, 200, 120, 0.35)";
+  sourceSelect.style.color = "#ffd7a1";
+  sourceSelect.style.padding = "3px 6px";
+  sourceSelect.style.borderRadius = "4px";
+  sourceSelect.style.outline = "none";
+  sourceSelect.style.cursor = "pointer";
+
+  const SOURCES = [
+    { name: "Auto (Dynamic)", value: "auto" },
+    { name: "Bass (Kick)", value: "bass" },
+    { name: "Mids (Melody)", value: "mids" },
+    { name: "Treble (Hi-Hat)", value: "treble" },
+    { name: "Volume (RMS)", value: "volume" }
+  ];
+
+  SOURCES.forEach(src => {
+    const opt = document.createElement("option");
+    opt.value = src.value;
+    opt.textContent = src.name;
+    opt.style.background = "#111";
+    sourceSelect.appendChild(opt);
+  });
+
+  sourceSelect.addEventListener("change", (e) => {
+    AUDIO_SYSTEM.setReactivitySource(e.target.value);
+  });
+
+  sourceRow.appendChild(sourceName);
+  sourceRow.appendChild(sourceSelect);
+  contentWrapper.appendChild(sourceRow);
+
+  // Volume slider below
+  const volRow = document.createElement("label");
+  volRow.style.display = "grid";
+  volRow.style.gridTemplateColumns = "76px minmax(0, 1fr) 36px";
+  volRow.style.gap = "6px";
+  volRow.style.alignItems = "center";
+  volRow.style.marginTop = "8px";
+
+  const volName = document.createElement("span");
+  volName.textContent = "Volume";
+  volName.style.opacity = "0.8";
+
+  const volSlider = document.createElement("input");
+  volSlider.type = "range";
+  volSlider.min = "0";
+  volSlider.max = "1";
+  volSlider.step = "0.01";
+  volSlider.value = "0.5";
+
+  const volValue = document.createElement("span");
+  volValue.textContent = "50%";
+  volValue.style.textAlign = "right";
+
+  volSlider.addEventListener("input", () => {
+    AUDIO_SYSTEM.setVolume(Number(volSlider.value));
+    volValue.textContent = Math.round(Number(volSlider.value) * 100) + "%";
+  });
+
+  volRow.appendChild(volName);
+  volRow.appendChild(volSlider);
+  volRow.appendChild(volValue);
+  contentWrapper.appendChild(volRow);
+
+  // Sensitivity slider below
+  const sensRow = document.createElement("label");
+  sensRow.style.display = "grid";
+  sensRow.style.gridTemplateColumns = "76px minmax(0, 1fr) 36px";
+  sensRow.style.gap = "6px";
+  sensRow.style.alignItems = "center";
+  sensRow.style.marginTop = "8px";
+
+  const sensName = document.createElement("span");
+  sensName.textContent = "Sensitivity";
+  sensName.style.opacity = "0.8";
+
+  const sensSlider = document.createElement("input");
+  sensSlider.type = "range";
+  sensSlider.min = "0.5";
+  sensSlider.max = "8.0";
+  sensSlider.step = "0.1";
+  sensSlider.value = "2.5";
+
+  const sensValue = document.createElement("span");
+  sensValue.textContent = "2.5";
+  sensValue.style.textAlign = "right";
+
+  sensSlider.addEventListener("input", () => {
+    AUDIO_SYSTEM.setSensitivity(Number(sensSlider.value));
+    sensValue.textContent = Number(sensSlider.value).toFixed(1);
+  });
+
+  sensRow.appendChild(sensName);
+  sensRow.appendChild(sensSlider);
+  sensRow.appendChild(sensValue);
+  contentWrapper.appendChild(sensRow);
+
+  // Analysis Data Grid
+  const analysisTitle = document.createElement("div");
+  analysisTitle.textContent = "Analysis Data";
+  analysisTitle.style.marginTop = "14px";
+  analysisTitle.style.marginBottom = "6px";
+  analysisTitle.style.fontWeight = "700";
+  analysisTitle.style.opacity = "0.8";
+  analysisTitle.style.textAlign = "center";
+  contentWrapper.appendChild(analysisTitle);
+
+  const metricsGrid = document.createElement("div");
+  metricsGrid.style.display = "grid";
+  metricsGrid.style.gridTemplateColumns = "1fr 1fr";
+  metricsGrid.style.gap = "6px";
+  metricsGrid.style.marginTop = "4px";
+
+  function createCard(labelText, initVal) {
+    const card = document.createElement("div");
+    card.style.background = "rgba(255, 200, 120, 0.04)";
+    card.style.border = "1px solid rgba(255, 200, 120, 0.15)";
+    card.style.padding = "6px";
+    card.style.borderRadius = "6px";
+    card.style.display = "flex";
+    card.style.flexDirection = "column";
+    card.style.gap = "2px";
+
+    const label = document.createElement("span");
+    label.textContent = labelText;
+    label.style.color = "rgba(255, 215, 161, 0.6)";
+    label.style.fontSize = "9px";
+    label.style.textTransform = "uppercase";
+
+    const value = document.createElement("span");
+    value.textContent = initVal;
+    value.style.fontWeight = "bold";
+    value.style.fontSize = "11px";
+    value.style.color = "#ffd7a1";
+
+    card.appendChild(label);
+    card.appendChild(value);
+    return { card, valEl: value };
+  }
+
+  const mVol = createCard("Volume (RMS)", "0.00");
+  const mBass = createCard("Bass", "0.00");
+  const mTreble = createCard("Treble", "0.00");
+  const mBpm = createCard("BPM", "--");
+  mBpm.valEl.style.color = "#ffb050";
+  mBpm.valEl.style.textShadow = "0 0 4px rgba(255, 176, 80, 0.5)";
+
+  const mSource = createCard("Active Source", "--");
+  mSource.card.style.gridColumn = "span 2";
+
+  metricsGrid.appendChild(mVol.card);
+  metricsGrid.appendChild(mBpm.card);
+  metricsGrid.appendChild(mBass.card);
+  metricsGrid.appendChild(mTreble.card);
+  metricsGrid.appendChild(mSource.card);
+  contentWrapper.appendChild(metricsGrid);
+
+  const dotsContainer = document.createElement("div");
+  dotsContainer.style.display = "flex";
+  dotsContainer.style.justifyContent = "center";
+  dotsContainer.style.gap = "6px";
+  dotsContainer.style.marginTop = "8px";
+  contentWrapper.appendChild(dotsContainer);
+
+  window.addEventListener('audioStateChange', (e) => {
+    const s = e.detail;
+    playPauseBtn.textContent = (s.isPlaying && s.hasFile) ? "\u25A0 Pause" : "\u25B6 Play";
+    reactiveCheckbox.checked = s.enabled;
+    sourceSelect.value = s.reactivitySource;
+    if (s.trackFilename) {
+      trackSelect.value = s.trackFilename;
+    }
+  });
+
+  window._audioUIRefresh = () => {
+    const state = AUDIO_SYSTEM.getAudioState();
+    mVol.valEl.textContent = state.volume.toFixed(2);
+    mBpm.valEl.textContent = state.bpm > 0 ? String(state.bpm) : "--";
+    mBass.valEl.textContent = state.bass.toFixed(2);
+    mTreble.valEl.textContent = state.treble.toFixed(2);
+
+    let srcText = state.reactivitySource.toUpperCase();
+    if (state.reactivitySource === "auto") {
+      srcText += ` (${state.detectedSource.toUpperCase()})`;
+    }
+    mSource.valEl.textContent = state.isPlaying ? srcText : "--";
+
+    if (!state.hasFile) return;
+
+    const numDots = Math.min(12, Math.max(3, Math.round(Math.min(180, state.bpm || 120) / 20)));
+    while (dotsContainer.children.length > numDots) {
+      dotsContainer.removeChild(dotsContainer.lastChild);
+    }
+    while (dotsContainer.children.length < numDots) {
+      const dot = document.createElement("div");
+      dot.style.width = "8px";
+      dot.style.height = "8px";
+      dot.style.borderRadius = "50%";
+      dot.style.background = "rgba(255, 215, 161, 0.15)";
+      dot.style.transition = "background 0.05s ease-out";
+      dotsContainer.appendChild(dot);
+    }
+
+    if (state.isPlaying && state.beatStrength > 0.01) {
+      const dots = Array.from(dotsContainer.children);
+      const activeIdx = Math.floor(state.beatStrength * numDots) % numDots;
+      dots.forEach((dot, idx) => {
+        dot.style.background = idx === activeIdx ? "rgba(255, 180, 80, 0.9)" : "rgba(255, 215, 161, 0.15)";
+      });
+    }
+  };
 
   document.body.appendChild(panel);
 }
@@ -827,9 +1213,10 @@ function animate() {
     Object.assign(state, AUDIO_SYSTEM.getAudioState());
   } catch(e) {}
   
-  if (state.hasFile && state.isPlaying && state.enabled && state.beatStrength > 0.01) {
-    const s = state.beatStrength;
-    
+  const sensMultiplier = state.sensitivity !== undefined ? (state.sensitivity / 2.5) : 1.0;
+  const s = (state.hasFile && state.isPlaying && state.enabled) ? (state.beatStrength * sensMultiplier) : 0;
+  
+  if (s > 0) {
     // Energy reacts to beats - modulates wave amplitudes and flow speed
     ACTIVE.waveAmpA += s * 0.35;
     ACTIVE.flowSpeed += s * 1.8;
@@ -840,6 +1227,15 @@ function animate() {
     // Glow reacts to beats - modulates alpha/brightness
     ACTIVE.alphaMultiplier += s * 0.45;
   }
+
+  // Physical beat-reactive scaling of the entire wave group (vertical stretch & breathing pulse)
+  const yPulse = 1.0 + s * 0.25;
+  const xzPulse = 1.0 + s * 0.08;
+  waveGroup.scale.set(
+    PARAMS.globalScale * xzPulse,
+    PARAMS.globalScale * yPulse,
+    PARAMS.globalScale * xzPulse
+  );
   
   if (Math.round(PARAMS.layerCount) !== ribbons.length) {
     rebuildRibbons(PARAMS.layerCount);
