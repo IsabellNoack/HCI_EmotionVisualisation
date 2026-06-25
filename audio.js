@@ -2,6 +2,13 @@ const AUDIO = {
   enabled: false,    // visual reactive mode (user toggle)
   beatStrength: 0,   // strength of last detected beat pulse
   beatDecay: 150,    // ms for beat pulse to decay back toward target
+  
+  // Real-time audio features
+  volume: 0,
+  bass: 0,
+  mids: 0,
+  treble: 0,
+  rawFrequencies: []
 };
 
 // State variables
@@ -25,12 +32,56 @@ export function initContext() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 128; // Small FFT for fast analysis
+    analyser.fftSize = 256; // Larger FFT for better spectrum details
     
     gainNode = audioCtx.createGain();
     gainNode.gain.value = 0.5; // Start at 50% volume
     gainNode.connect(audioCtx.destination);
   }
+}
+
+export async function loadTrack(filename) {
+  initContext();
+  
+  if (audioCtx.state === 'suspended') {
+    await audioCtx.resume();
+  }
+  
+  try {
+    stopPlayback();
+    
+    audioElement = new Audio();
+    // Use decodeURIComponent or direct string if it is already clean, but encodeURIComponent helps with spaces
+    // Wait, the file is served relative to the server so encode/decode is needed to match spaces in URLs.
+    audioElement.src = "./audio/" + encodeURI(filename);
+    audioElement.loop = true;
+    audioElement.crossOrigin = "anonymous";
+    audioElement.volume = gainNode.gain.value;
+    
+    const mediaSource = audioCtx.createMediaElementSource(audioElement);
+    mediaSource.connect(analyser);
+    mediaSource.connect(gainNode);
+    
+    hasLoadedAudio = true;
+    
+    // Reset beat tracking
+    energyHistory = [];
+    lastBeatTime = -Infinity;
+    beatTimes = [];
+    detectedBpm = 0;
+    
+    window.dispatchEvent(new CustomEvent('audioStateChange', { detail: getAudioState() }));
+    return true;
+  } catch(err) {
+    console.error('Failed to load track:', filename, err);
+    hasLoadedAudio = false;
+    isPlayingState = false;
+    return false;
+  }
+}
+
+export async function loadDefaultTrack() {
+  return await loadTrack("Metronome 120 BPM - QuickSounds.com.mp3");
 }
 
 export async function loadFile(file) {
@@ -88,12 +139,17 @@ export async function loadFile(file) {
   }
 }
 
-export function play() {
-  if (!hasLoadedAudio || !audioElement) return false;
+export async function play() {
+  if (!hasLoadedAudio) {
+    const loaded = await loadDefaultTrack();
+    if (!loaded) return false;
+  }
+  
+  if (!audioElement) return false;
   
   try {
     if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
+      await audioCtx.resume();
     }
     
     // Resume from where we paused!
@@ -183,7 +239,9 @@ function detectBeat(currentTime) {
   // Beat = current energy significantly above recent average
   const ratio = meanEnergy > 0.1 ? energy / meanEnergy : (energy > 2 ? 3 : 0);
   
-  if (ratio > 1.4 && energyHistory.length >= 30) {
+  // Debounce consecutive triggers on a single beat onset (min 250ms interval, supporting up to 240 BPM)
+  const minInterval = 0.25;
+  if (ratio > 1.4 && (currentTime - lastBeatTime) > minInterval) {
     lastBeatTime = currentTime;
     beatTimes.push(currentTime);
     
@@ -224,13 +282,78 @@ function updateBpm() {
   }
 }
 
+function updateAudioFeatures() {
+  if (!analyser || !hasLoadedAudio || !isPlayingState) {
+    AUDIO.volume = 0;
+    AUDIO.bass = 0;
+    AUDIO.mids = 0;
+    AUDIO.treble = 0;
+    AUDIO.rawFrequencies = [];
+    return;
+  }
+  
+  try {
+    // 1. Volume (RMS) from Time Domain
+    const bufferLength = analyser.fftSize;
+    const timeData = new Float32Array(bufferLength);
+    analyser.getFloatTimeDomainData(timeData);
+    let sum = 0;
+    for (let i = 0; i < bufferLength; i++) {
+      sum += timeData[i] * timeData[i];
+    }
+    const rms = Math.sqrt(sum / bufferLength);
+    AUDIO.volume = AUDIO.volume * 0.7 + rms * 0.3; // exponential smoothing
+    
+    // 2. Frequency bands from Frequency Domain
+    const freqData = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(freqData);
+    
+    AUDIO.rawFrequencies = Array.from(freqData);
+    
+    let bassSum = 0, bassCount = 0;
+    let midsSum = 0, midsCount = 0;
+    let trebleSum = 0, trebleCount = 0;
+    
+    const binCount = freqData.length;
+    for (let i = 0; i < binCount; i++) {
+      const val = freqData[i] / 255.0;
+      // In 256-fft, 128 bins. Sample rate 44.1k: each bin ~172Hz
+      if (i >= 1 && i <= 3) { // ~170Hz - 510Hz (Bass)
+        bassSum += val;
+        bassCount++;
+      } else if (i > 3 && i <= 16) { // ~510Hz - 2750Hz (Mids)
+        midsSum += val;
+        midsCount++;
+      } else if (i > 16 && i <= 48) { // ~2750Hz - 8250Hz (Treble)
+        trebleSum += val;
+        trebleCount++;
+      }
+    }
+    
+    const targetBass = bassCount > 0 ? bassSum / bassCount : 0;
+    const targetMids = midsCount > 0 ? midsSum / midsCount : 0;
+    const targetTreble = trebleCount > 0 ? trebleSum / trebleCount : 0;
+    
+    // Smooth transitions
+    AUDIO.bass = AUDIO.bass * 0.6 + targetBass * 0.4;
+    AUDIO.mids = AUDIO.mids * 0.7 + targetMids * 0.3;
+    AUDIO.treble = AUDIO.treble * 0.7 + targetTreble * 0.3;
+  } catch (e) {
+    console.error("Error updating audio features:", e);
+  }
+}
+
 export function processBeatDetection() {
-  if (!hasLoadedAudio || !isPlayingState) return;
+  if (!hasLoadedAudio || !isPlayingState) {
+    updateAudioFeatures();
+    return;
+  }
   
   const currentTime = audioCtx ? audioCtx.currentTime : undefined;
   if (!currentTime || !isFinite(currentTime)) return;
   
   try {
+    updateAudioFeatures();
     const isOnset = detectBeat(currentTime);
     
     if (isOnset && AUDIO.enabled) {
@@ -267,6 +390,11 @@ export function getAudioState() {
     beatStrength: AUDIO.beatStrength,
     bpm: detectedBpm,
     hasFile: hasLoadedAudio,
+    volume: AUDIO.volume,
+    bass: AUDIO.bass,
+    mids: AUDIO.mids,
+    treble: AUDIO.treble,
+    rawFrequencies: AUDIO.rawFrequencies
   };
 }
 
@@ -299,21 +427,71 @@ export function addMusicUI(panel, contentWrapper) {
   sectionHeader.style.textAlign = "center";
   contentWrapper.appendChild(sectionHeader);
 
-  // File input row
+  // Dropdown list of track names & files
+  const TRACKS = [
+    { name: "Metronome 120 BPM", file: "Metronome 120 BPM - QuickSounds.com.mp3" },
+    { name: "The Infinity (120 BPM)", file: "dcpixelwelt-the-infinity-120-bpm-d-major-13108.mp3" },
+    { name: "Ad Infinitum - New Dawn", file: "Ad Infinitum - New Dawn.mp3" },
+    { name: "Ad Infinitum - Serpent's Downfall", file: "Ad Infinitum - The Serpent's Downfall.mp3" }
+  ];
+
+  // Track select row
+  const trackLabel = document.createElement("label");
+  trackLabel.style.display = "grid";
+  trackLabel.style.gridTemplateColumns = "76px minmax(0,1fr)";
+  trackLabel.style.gap = "6px";
+  trackLabel.style.alignItems = "center";
+  trackLabel.style.margin = "6px 0";
+
+  const trackText = document.createElement("span");
+  trackText.textContent = "Select Track";
+  trackText.style.opacity = "0.8";
+  trackText.style.fontSize = "10px";
+  trackLabel.appendChild(trackText);
+
+  const trackSelect = document.createElement("select");
+  trackSelect.style.fontSize = "10px";
+  trackSelect.style.background = "rgba(0, 0, 0, 0.4)";
+  trackSelect.style.border = "1px solid rgba(255, 200, 120, 0.35)";
+  trackSelect.style.color = "#ffd7a1";
+  trackSelect.style.padding = "2px";
+  trackSelect.style.borderRadius = "4px";
+  trackSelect.style.outline = "none";
+  trackSelect.style.cursor = "pointer";
+
+  TRACKS.forEach(track => {
+    const opt = document.createElement("option");
+    opt.value = track.file;
+    opt.textContent = track.name;
+    opt.style.background = "#111";
+    trackSelect.appendChild(opt);
+  });
+
+  trackSelect.addEventListener("change", async (e) => {
+    const wasPlaying = isPlayingState;
+    fileNameDisplay.textContent = ""; // Clear custom file name
+    await loadTrack(e.target.value);
+    if (wasPlaying) {
+      await play();
+    }
+  });
+
+  trackLabel.appendChild(trackSelect);
+  contentWrapper.appendChild(trackLabel);
+
+  // File input row (Custom File)
   const fileLabel = document.createElement("label");
   fileLabel.style.display = "grid";
-  fileLabel.style.gridTemplateColumns = "76px minmax(0,1fr) 44px";
+  fileLabel.style.gridTemplateColumns = "76px minmax(0,1fr)";
   fileLabel.style.gap = "6px";
   fileLabel.style.alignItems = "center";
   fileLabel.style.margin = "6px 0";
 
-  const fileNameDisplay = document.createElement("span");
-  fileNameDisplay.textContent = "";
-  fileNameDisplay.style.textAlign = "right";
-  fileNameDisplay.style.opacity = "0.6";
-  fileNameDisplay.style.fontSize = "10px";
-
-  fileLabel.appendChild(fileNameDisplay);
+  const customLabel = document.createElement("span");
+  customLabel.textContent = "Custom File";
+  customLabel.style.opacity = "0.8";
+  customLabel.style.fontSize = "10px";
+  fileLabel.appendChild(customLabel);
 
   const fileInput = document.createElement("input");
   fileInput.type = "file";
@@ -321,12 +499,20 @@ export function addMusicUI(panel, contentWrapper) {
   fileInput.style.fontSize = "9px";
   fileInput.style.padding = "2px";
 
+  const fileNameDisplay = document.createElement("span");
+  fileNameDisplay.textContent = "";
+  fileNameDisplay.style.textAlign = "right";
+  fileNameDisplay.style.opacity = "0.6";
+  fileNameDisplay.style.fontSize = "9px";
+  fileNameDisplay.style.display = "block";
+  fileNameDisplay.style.marginTop = "2px";
+
   fileInput.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     
-    let displayName = file.name.length > 16 ? 
-      file.name.substring(0, 15).replace(/<[^>]*>?/gm, '') + '…' : 
+    let displayName = file.name.length > 12 ? 
+      file.name.substring(0, 11).replace(/<[^>]*>?/gm, '') + '…' : 
       file.name;
     fileNameDisplay.textContent = "Loading...";
 
@@ -341,6 +527,7 @@ export function addMusicUI(panel, contentWrapper) {
 
   fileLabel.appendChild(fileInput);
   contentWrapper.appendChild(fileLabel);
+  contentWrapper.appendChild(fileNameDisplay);
 
   // Transport controls row (play/pause)
   const controlRow = document.createElement("div");
@@ -359,11 +546,11 @@ export function addMusicUI(panel, contentWrapper) {
   playPauseBtn.style.font = "bold 10px monospace";
   playPauseBtn.style.cursor = "pointer";
 
-  playPauseBtn.addEventListener("click", () => {
+  playPauseBtn.addEventListener("click", async () => {
     if (isPlayingState) {
       pause();
     } else {
-      play();
+      await play();
     }
   });
 
