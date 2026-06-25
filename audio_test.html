@@ -353,11 +353,20 @@
                 </select>
             </div>
 
-            <!-- Toggle influence -->
-            <label class="switch-container">
-                <span class="switch-label">Music Reactive (Y-Axis)</span>
-                <input type="checkbox" id="reactiveToggle" checked>
-            </label>
+            <!-- Reactivity Source -->
+            <div class="slider-container">
+                <div class="slider-header">
+                    <span>Reactivity Source</span>
+                </div>
+                <select id="sourceSelect"
+                    style="width: 100%; padding: 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); color: var(--text-main); font-family: 'Outfit', sans-serif; font-size: 0.9rem; outline: none; cursor: pointer; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);">
+                    <option value="auto" style="background: var(--bg-dark);">Auto (Dynamic)</option>
+                    <option value="bass" style="background: var(--bg-dark);">Bass (Kick / Beat)</option>
+                    <option value="mids" style="background: var(--bg-dark);">Mids (Vocals / Melody)</option>
+                    <option value="treble" style="background: var(--bg-dark);">Treble (Hi-Hats)</option>
+                    <option value="volume" style="background: var(--bg-dark);">Volume (RMS)</option>
+                </select>
+            </div>
         </div>
 
         <div class="divider"></div>
@@ -407,6 +416,10 @@
                 <div class="metric-card">
                     <span class="metric-title">Treble</span>
                     <span id="mTreble" class="metric-value">0.00</span>
+                </div>
+                <div class="metric-card" style="grid-column: span 2;">
+                    <span class="metric-title">Active Source (Auto Mode)</span>
+                    <span id="mActiveSource" class="metric-value" style="color: var(--accent-violet);">--</span>
                 </div>
             </div>
         </div>

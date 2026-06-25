@@ -12,21 +12,56 @@ let basePlaneVertices = []; // To store original grid positions
 const playBtn = document.getElementById("playBtn");
 const volumeSlider = document.getElementById("volumeSlider");
 const volumeVal = document.getElementById("volumeVal");
-const reactiveToggle = document.getElementById("reactiveToggle");
 const sensSlider = document.getElementById("sensSlider");
 const sensVal = document.getElementById("sensVal");
 const modeButtons = document.querySelectorAll(".mode-btn");
+const sourceSelect = document.getElementById("sourceSelect");
 
 // UI Indicators
 const mVolume = document.getElementById("mVolume");
 const mBpm = document.getElementById("mBpm");
 const mBass = document.getElementById("mBass");
 const mTreble = document.getElementById("mTreble");
+const mActiveSource = document.getElementById("mActiveSource");
 
 // Playback logic
 let isPlaying = false;
 let sensitivity = parseFloat(sensSlider.value);
 let flowTime = 0;
+
+// Reactivity Band selection state
+let reactivitySource = "auto"; 
+const historySize = 60; // 1 second rolling history at 60fps
+const bassHistory = [];
+const midsHistory = [];
+const trebleHistory = [];
+let detectedSource = "mids";
+
+function updateAutoSource(bass, mids, treble) {
+    bassHistory.push(bass);
+    midsHistory.push(mids);
+    trebleHistory.push(treble);
+    
+    if (bassHistory.length > historySize) bassHistory.shift();
+    if (midsHistory.length > historySize) midsHistory.shift();
+    if (trebleHistory.length > historySize) trebleHistory.shift();
+    
+    if (bassHistory.length < 10) return "mids";
+    
+    // Range of activity
+    const bassRange = Math.max(...bassHistory) - Math.min(...bassHistory);
+    const midsRange = Math.max(...midsHistory) - Math.min(...midsHistory);
+    const trebleRange = Math.max(...trebleHistory) - Math.min(...trebleHistory);
+    
+    if (bassRange > midsRange && bassRange > trebleRange) {
+        detectedSource = "bass";
+    } else if (midsRange > bassRange && midsRange > trebleRange) {
+        detectedSource = "mids";
+    } else {
+        detectedSource = "treble";
+    }
+    return detectedSource;
+}
 
 // Initialize Three.js
 function initThree() {
@@ -269,7 +304,35 @@ function animate() {
         playBtn.style.boxShadow = "0 4px 15px var(--accent-glow)";
     }
 
-    const reactive = reactiveToggle.checked;
+    // Calculate active reactivity value based on dropdown source (auto or selected)
+    let activeVal = 0;
+    let currentActiveSource = reactivitySource;
+    
+    if (reactivitySource === "auto") {
+        currentActiveSource = updateAutoSource(state.bass, state.mids, state.treble);
+        mActiveSource.textContent = currentActiveSource.toUpperCase() + " (Auto)";
+    } else {
+        mActiveSource.textContent = currentActiveSource.toUpperCase() + " (Manual)";
+        // Clear histories so it's fresh when going back to auto
+        bassHistory.length = 0;
+        midsHistory.length = 0;
+        trebleHistory.length = 0;
+    }
+    
+    if (currentActiveSource === "bass") {
+        activeVal = state.bass;
+    } else if (currentActiveSource === "mids") {
+        activeVal = state.mids;
+    } else if (currentActiveSource === "treble") {
+        activeVal = state.treble;
+    } else if (currentActiveSource === "volume") {
+        activeVal = state.volume * 1.5; // Scale volume up slightly to match normalized bands
+    }
+    
+    // Clamp activeVal between 0 and 1
+    activeVal = Math.min(1, Math.max(0, activeVal));
+
+    const reactive = true;
     const deltaSeconds = 0.016; // Roughly 60fps
     flowTime += deltaSeconds;
 
@@ -284,11 +347,13 @@ function animate() {
             
             // Map bar index to frequency array (first half is more energetic)
             const freqIdx = Math.floor((i / bars.length) * (rawFreq.length * 0.6));
-            const amp = isReactive ? (rawFreq[freqIdx] / 255.0) * sensitivity : 0.05;
             
-            // Idle bounce if not playing
-            const idleOffset = !state.isPlaying ? Math.sin(flowTime * 2.0 + i * 0.4) * 0.1 + 0.12 : 0;
-            const targetYScale = Math.max(0.05, amp + idleOffset);
+            let amp = 0.05;
+            if (isReactive) {
+                amp = (rawFreq[freqIdx] / 255.0) * sensitivity;
+            }
+            
+            const targetYScale = Math.max(0.05, amp);
             
             // Smooth lerp scaling to avoid hard jumps
             bar.scale.y = THREE.MathUtils.lerp(bar.scale.y, targetYScale, 0.25);
@@ -298,10 +363,10 @@ function animate() {
         }
     }
 
-    // 2. Animate Ribbon Curves
+    // 2. Animate Ribbon Curves (Calmed Down & Pulsing)
     else if (currentMode === "curve") {
         const isReactive = reactive && state.isPlaying;
-        const rawFreq = state.rawFrequencies || [];
+        const width = 14;
 
         waveGroup.children.forEach((line) => {
             const posAttr = line.geometry.attributes.position;
@@ -310,28 +375,22 @@ function animate() {
             for (let i = 0; i < pointsCount; i++) {
                 const x = posAttr.getX(i);
                 
-                // Base sine movement (idle flow)
-                const speed = isReactive ? 4.0 + state.bass * 6.0 : 2.0;
-                let y = Math.sin(x * 0.7 - flowTime * speed + phaseOffset) * 0.35;
+                let y = 0; // Stand completely still and flat in rest state
 
                 if (isReactive) {
-                    // Left wave is bass, middle is mids, right is treble
-                    const progress = i / (pointsCount - 1);
-                    let audioMultiplier = 0;
+                    // Apply transient shaping to make the wave pulse sharply on beats and decay back
+                    const reactionVal = Math.pow(activeVal, 2.5) * sensitivity * 1.5;
                     
-                    if (progress < 0.35) {
-                        audioMultiplier = state.bass * 2.0;
-                    } else if (progress >= 0.35 && progress < 0.7) {
-                        audioMultiplier = state.mids * 1.5;
-                    } else {
-                        audioMultiplier = state.treble * 3.0; // high frequencies are lower amplitude, boost them
-                    }
-
-                    // Displace curve point
-                    y += Math.sin(x * 1.8 + flowTime * 8.0) * audioMultiplier * sensitivity * 0.4;
+                    // Create a bell envelope so the wave is centered and edges taper off smoothly to 0
+                    const progress = i / (pointsCount - 1);
+                    const envelope = Math.sin(progress * Math.PI); // 0 at start, 1 in middle, 0 at end
+                    
+                    // Add pulsing wave displacement in place (no horizontal flow/scrolling)
+                    y = Math.sin(x * 1.2 + phaseOffset) * envelope * reactionVal;
                 }
 
-                posAttr.setY(i, y);
+                // Smooth out displacement with lerp
+                posAttr.setY(i, THREE.MathUtils.lerp(posAttr.getY(i), y, 0.25));
             }
             posAttr.needsUpdate = true;
         });
@@ -348,16 +407,16 @@ function animate() {
             // Distance from center of plane
             const dist = Math.sqrt(originalV.x * originalV.x + originalV.z * originalV.z);
             
-            // Base fluid ripple wave
-            const speed = isReactive ? 3.0 + state.bass * 5.0 : 1.5;
-            let y = Math.sin(dist * 0.8 - flowTime * speed) * 0.2;
+            let y = 0; // Stand completely still and flat in rest state
 
             if (isReactive) {
-                // Modulate amplitude of ripples by volume/bass
-                y += Math.sin(dist * 1.5 - flowTime * 8.0) * state.volume * sensitivity * 0.5;
+                // Modulate amplitude of ripples by the transient-shaped activeVal
+                const reactionVal = Math.pow(activeVal, 2.5) * sensitivity * 0.8;
+                // Static concentric ripples that only pump up/down with the beats (no traveling flow)
+                y = Math.sin(dist * 1.2) * reactionVal;
             }
 
-            posAttr.setY(i, y);
+            posAttr.setY(i, THREE.MathUtils.lerp(posAttr.getY(i), y, 0.25));
         }
         posAttr.needsUpdate = true;
     }
@@ -391,6 +450,11 @@ function setupUI() {
         }
     });
 
+    // Reactivity Source Dropdown
+    sourceSelect.addEventListener("change", (e) => {
+        reactivitySource = e.target.value;
+    });
+
     // Volume Slider
     volumeSlider.addEventListener("input", (e) => {
         const vol = parseFloat(e.target.value);
@@ -415,11 +479,14 @@ function setupUI() {
         });
     });
 
-    // Sync volume slider initial position
+    // Sync volume slider and reactivity source initial position
     const state = AUDIO_SYSTEM.getAudioState();
     volumeSlider.value = 0.5; // match our default or read from audio.js
     volumeVal.textContent = "50%";
     AUDIO_SYSTEM.setVolume(0.5);
+
+    sourceSelect.value = "auto";
+    reactivitySource = "auto";
 }
 
 // Start
