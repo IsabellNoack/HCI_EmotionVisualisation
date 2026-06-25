@@ -2,7 +2,7 @@ import http.server
 import json
 import os
 
-PORT = 8000
+PORT = 8080
 latest_update = None
 
 class DualHandler(http.server.SimpleHTTPRequestHandler):

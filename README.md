@@ -12,13 +12,13 @@ Start the server:
 ```bash
 python server.py
 ```
-Open `http://localhost:8000` in your browser.
+Open `http://localhost:8080` in your browser.
 
 ## API POST Example
 
 Send a POST request to update the visualization parameters:
 ```bash
-curl -X POST http://localhost:8000/api/update -H "Content-Type: application/json" -d "{\"energy\": 0.8, \"turbulence\": 0.7, \"red\": 0.9}"
+curl -X POST http://localhost:8080/api/update -H "Content-Type: application/json" -d "{\"energy\": 0.8, \"turbulence\": 0.7, \"red\": 0.9}"
 ```
 
 ## Parameters
