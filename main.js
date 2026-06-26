@@ -576,39 +576,20 @@ function createMeaningfulMixerUI() {
   musicHeader.style.textAlign = "center";
   contentWrapper.appendChild(musicHeader);
 
-  // Play button and Reactive checkbox on top
+  // Control Row containing Reactive checkbox (top) and Play button (bottom)
   const controlRow = document.createElement("div");
-  controlRow.style.display = "grid";
-  controlRow.style.gridTemplateColumns = "1fr auto";
+  controlRow.style.display = "flex";
+  controlRow.style.flexDirection = "column";
   controlRow.style.gap = "8px";
   controlRow.style.marginTop = "8px";
   controlRow.style.marginBottom = "8px";
-
-  const playPauseBtn = document.createElement("button");
-  playPauseBtn.textContent = "\u25B6 Play";
-  playPauseBtn.style.padding = "6px 12px";
-  playPauseBtn.style.background = "transparent";
-  playPauseBtn.style.border = "1px solid rgba(255, 215, 161, 0.4)";
-  playPauseBtn.style.borderRadius = "5px";
-  playPauseBtn.style.color = "#ffd7a1";
-  playPauseBtn.style.font = "bold 11px monospace";
-  playPauseBtn.style.cursor = "pointer";
-  playPauseBtn.style.outline = "none";
-
-  playPauseBtn.addEventListener("click", async () => {
-    const state = AUDIO_SYSTEM.getAudioState();
-    if (state.isPlaying) {
-      AUDIO_SYSTEM.pause();
-    } else {
-      await AUDIO_SYSTEM.play();
-    }
-  });
 
   const reactiveRow = document.createElement("label");
   reactiveRow.style.display = "flex";
   reactiveRow.style.alignItems = "center";
   reactiveRow.style.gap = "6px";
   reactiveRow.style.cursor = "pointer";
+  reactiveRow.style.marginBottom = "2px";
 
   const reactiveCheckbox = document.createElement("input");
   reactiveCheckbox.type = "checkbox";
@@ -626,8 +607,55 @@ function createMeaningfulMixerUI() {
   reactiveRow.appendChild(reactiveCheckbox);
   reactiveRow.appendChild(reactiveLabel);
 
-  controlRow.appendChild(playPauseBtn);
+  const playPauseBtn = document.createElement("button");
+  playPauseBtn.textContent = "\u25B6 Play";
+  playPauseBtn.style.padding = "6px 12px";
+  playPauseBtn.style.background = "transparent";
+  playPauseBtn.style.border = "1px solid rgba(255, 215, 161, 0.4)";
+  playPauseBtn.style.borderRadius = "5px";
+  playPauseBtn.style.color = "#ffd7a1";
+  playPauseBtn.style.font = "bold 11px monospace";
+  playPauseBtn.style.cursor = "pointer";
+  playPauseBtn.style.outline = "none";
+  playPauseBtn.style.width = "100%";
+
+  playPauseBtn.addEventListener("click", async () => {
+    const state = AUDIO_SYSTEM.getAudioState();
+    if (state.isPlaying) {
+      AUDIO_SYSTEM.pause();
+    } else {
+      await AUDIO_SYSTEM.play();
+    }
+  });
+
+  const testVisRow = document.createElement("label");
+  testVisRow.style.display = "flex";
+  testVisRow.style.alignItems = "center";
+  testVisRow.style.gap = "6px";
+  testVisRow.style.cursor = "pointer";
+  testVisRow.style.marginBottom = "2px";
+
+  const testVisCheckbox = document.createElement("input");
+  testVisCheckbox.type = "checkbox";
+  testVisCheckbox.checked = false;
+
+  const testVisLabel = document.createElement("span");
+  testVisLabel.textContent = "Show Audio-Test Vis (Bars & Curves)";
+  testVisLabel.style.fontSize = "11px";
+  testVisLabel.style.opacity = "0.9";
+
+  testVisCheckbox.addEventListener("change", () => {
+    showTestVis = testVisCheckbox.checked;
+    if (testBarsGroup) testBarsGroup.visible = showTestVis;
+    if (testCurveGroup) testCurveGroup.visible = showTestVis;
+  });
+
+  testVisRow.appendChild(testVisCheckbox);
+  testVisRow.appendChild(testVisLabel);
+
   controlRow.appendChild(reactiveRow);
+  controlRow.appendChild(testVisRow);
+  controlRow.appendChild(playPauseBtn);
   contentWrapper.appendChild(controlRow);
 
   // Custom File selector
@@ -1162,6 +1190,95 @@ function addRibbon(index, total) {
   waveGroup.add(ribbon);
 }
 
+// Reference variables for audio test visualizers
+let testBarsGroup = null;
+let testCurveGroup = null;
+let showTestVis = false;
+
+function buildTestBars() {
+  testBarsGroup = new THREE.Group();
+  const count = 32;
+  const barWidth = 0.2;
+  const spacing = 0.3;
+  const startX = -((count - 1) * spacing) / 2;
+
+  const geometry = new THREE.BoxGeometry(barWidth, 1, barWidth);
+  geometry.translate(0, 0.5, 0); // shift pivot to bottom
+
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().lerpColors(new THREE.Color(0xbd00ff), new THREE.Color(0x00f0ff), t),
+      roughness: 0.2,
+      metalness: 0.8,
+      emissive: new THREE.Color().lerpColors(new THREE.Color(0x400060), new THREE.Color(0x004060), t),
+      emissiveIntensity: 0.5
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(startX + i * spacing, 2.2, 0); // stack on top of curve
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    testBarsGroup.add(mesh);
+  }
+  testBarsGroup.visible = false;
+  scene.add(testBarsGroup);
+}
+
+function buildTestWaveCurve() {
+  testCurveGroup = new THREE.Group();
+  const ribbonCount = 3;
+  const pointsCount = 80;
+  const width = 10;
+
+  for (let r = 0; r < ribbonCount; r++) {
+    const positions = new Float32Array(pointsCount * 3);
+    const colors = new Float32Array(pointsCount * 3);
+
+    const colorStart = new THREE.Color(0xbd00ff);
+    const colorEnd = new THREE.Color(0x00f0ff);
+    const tempColor = new THREE.Color();
+
+    for (let i = 0; i < pointsCount; i++) {
+      const t = i / (pointsCount - 1);
+      const x = -width / 2 + t * width;
+      const z = (r - 1) * 0.75;
+
+      positions[i * 3] = x;
+      positions[i * 3 + 1] = 1.0; // y baseline
+      positions[i * 3 + 2] = z;
+
+      tempColor.lerpColors(colorStart, colorEnd, t);
+      colors[i * 3] = tempColor.r;
+      colors[i * 3 + 1] = tempColor.g;
+      colors[i * 3 + 2] = tempColor.b;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+    const material = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      linewidth: 3,
+      transparent: true,
+      opacity: 0.85 - r * 0.2
+    });
+
+    const line = new THREE.Line(geometry, material);
+    line.userData = {
+      pointsCount: pointsCount,
+      width: width,
+      zOffset: (r - 1) * 0.75,
+      phaseOffset: r * 0.8
+    };
+    testCurveGroup.add(line);
+  }
+  testCurveGroup.visible = false;
+  scene.add(testCurveGroup);
+}
+
 function rebuildRibbons(nextLayerCount) {
   const total = Math.max(1, Math.round(nextLayerCount));
   PARAMS.layerCount = total;
@@ -1179,6 +1296,10 @@ scene.add(ambientLight);
 const directionalLight = new THREE.DirectionalLight(0xffc56e, 0.75);
 directionalLight.position.set(2, 1, 4);
 scene.add(directionalLight);
+
+// Build reference visualizers (hidden by default)
+buildTestBars();
+buildTestWaveCurve();
 
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -1215,18 +1336,6 @@ function animate() {
   
   const sensMultiplier = state.sensitivity !== undefined ? (state.sensitivity / 2.5) : 1.0;
   const s = (state.hasFile && state.isPlaying && state.enabled) ? (state.beatStrength * sensMultiplier) : 0;
-  
-  if (s > 0) {
-    // Energy reacts to beats - modulates wave amplitudes and flow speed
-    ACTIVE.waveAmpA += s * 0.35;
-    ACTIVE.flowSpeed += s * 1.8;
-    
-    // Turbulence (noise) reacts to beats - modulates noise amplitude
-    ACTIVE.noiseAmpY += s * 0.6;
-    
-    // Glow reacts to beats - modulates alpha/brightness
-    ACTIVE.alphaMultiplier += s * 0.45;
-  }
 
   // Physical beat-reactive scaling of the entire wave group (vertical stretch & breathing pulse)
   const yPulse = 1.0 + s * 0.25;
@@ -1248,8 +1357,91 @@ function animate() {
     window._audioUIRefresh();
   }
 
+  // Update Test Visualizers if visible
+  if (showTestVis && testBarsGroup && testCurveGroup) {
+    const rawFreq = state.rawFrequencies || [];
+    const sensitivity = state.sensitivity || 2.5;
+
+    // Get selected dynamic color from ACTIVE.baseRgb
+    const r = THREE.MathUtils.clamp(ACTIVE.baseRgb.r, 0, 255) / 255;
+    const g = THREE.MathUtils.clamp(ACTIVE.baseRgb.g, 0, 255) / 255;
+    const b = THREE.MathUtils.clamp(ACTIVE.baseRgb.b, 0, 255) / 255;
+    const baseColor = new THREE.Color(r, g, b);
+    
+    // Create lighter / darker spectrum
+    const darkColor = baseColor.clone().multiplyScalar(0.3);
+    const lightColor = baseColor.clone().multiplyScalar(1.3);
+
+    // 1. Animate Bars
+    const bars = testBarsGroup.children;
+    for (let i = 0; i < bars.length; i++) {
+      const bar = bars[i];
+      const t = i / (bars.length - 1);
+      const tempColor = new THREE.Color().lerpColors(darkColor, lightColor, t);
+      
+      // Update color dynamically based on user selection
+      bar.material.color.copy(tempColor);
+      bar.material.emissive.copy(tempColor).multiplyScalar(0.3);
+
+      const freqIdx = Math.floor((i / bars.length) * (rawFreq.length * 0.6));
+      let amp = 0.05;
+      if (state.isPlaying) {
+        amp = (rawFreq[freqIdx] / 255.0) * sensitivity;
+      }
+      const targetYScale = Math.max(0.05, amp * 3.0);
+      bar.scale.y = THREE.MathUtils.lerp(bar.scale.y, targetYScale, 0.25);
+      bar.material.emissiveIntensity = bar.scale.y * 0.4;
+    }
+
+    // Calculate activeVal for curves
+    let activeVal = 0;
+    let currentActiveSource = state.reactivitySource;
+    if (state.reactivitySource === "auto") {
+      currentActiveSource = state.detectedSource;
+    }
+    if (currentActiveSource === "bass") {
+      activeVal = state.bass;
+    } else if (currentActiveSource === "mids") {
+      activeVal = state.mids;
+    } else if (currentActiveSource === "treble") {
+      activeVal = state.treble;
+    } else if (currentActiveSource === "volume") {
+      activeVal = state.volume * 1.5;
+    }
+    activeVal = Math.min(1, Math.max(0, activeVal));
+
+    // 2. Animate Curves
+    testCurveGroup.children.forEach((line) => {
+      const posAttr = line.geometry.attributes.position;
+      const colorAttr = line.geometry.attributes.color;
+      const { pointsCount, zOffset, phaseOffset } = line.userData;
+
+      for (let i = 0; i < pointsCount; i++) {
+        const x = posAttr.getX(i);
+        const t = i / (pointsCount - 1);
+        const tempColor = new THREE.Color().lerpColors(darkColor, lightColor, t);
+        
+        // Update color attribute dynamically
+        colorAttr.setXYZ(i, tempColor.r, tempColor.g, tempColor.b);
+
+        let y = 1.0; // Baseline y position
+        if (state.isPlaying) {
+          const reactionVal = Math.pow(activeVal, 2.5) * sensitivity * 1.5;
+          const progress = i / (pointsCount - 1);
+          const envelope = Math.sin(progress * Math.PI);
+          y = 1.0 + Math.sin(x * 1.2 + phaseOffset) * envelope * reactionVal;
+        }
+
+        posAttr.setY(i, THREE.MathUtils.lerp(posAttr.getY(i), y, 0.25));
+      }
+      posAttr.needsUpdate = true;
+      colorAttr.needsUpdate = true;
+    });
+  }
+
   if (!PARAMS.debug.freeze) {
-    flowTime += deltaTime * ACTIVE.flowSpeed;
+    const currentFlowSpeed = ACTIVE.flowSpeed + s * 1.8;
+    flowTime += deltaTime * currentFlowSpeed;
     swayTime += deltaTime * ACTIVE.swaySpeed;
   }
   cameraPanTime += deltaTime;
@@ -1272,13 +1464,13 @@ function animate() {
     uniforms.uTime.value = flowTime;
     uniforms.uColorA.value.copy(tempColorA);
     uniforms.uColorB.value.copy(tempColorB);
-    uniforms.uOpacity.value = (ACTIVE.baseOpacity - t * ACTIVE.opacityFalloff) * ACTIVE.alphaMultiplier;
+    uniforms.uOpacity.value = (ACTIVE.baseOpacity - t * ACTIVE.opacityFalloff) * (ACTIVE.alphaMultiplier + s * 0.45);
 
     uniforms.uPhase.value = i * ACTIVE.layerPhaseStep;
 
-    uniforms.uWaveAmpA.value = ACTIVE.waveAmpA;
+    uniforms.uWaveAmpA.value = ACTIVE.waveAmpA + s * 0.35;
     uniforms.uWaveAmpB.value = ACTIVE.waveAmpB;
-    uniforms.uNoiseAmpY.value = PARAMS.debug.noNoise ? 0.0 : ACTIVE.noiseAmpY;
+    uniforms.uNoiseAmpY.value = PARAMS.debug.noNoise ? 0.0 : (ACTIVE.noiseAmpY + s * 0.6);
     uniforms.uNoiseScaleX.value = ACTIVE.noiseScaleX;
     uniforms.uNoiseScaleY.value = ACTIVE.noiseScaleY;
     uniforms.uDepthNoiseAmp.value = PARAMS.debug.noNoise ? 0.0 : ACTIVE.depthNoiseAmp;

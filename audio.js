@@ -346,7 +346,7 @@ export function processBeatDetection() {
       AUDIO.beatStrength = 1.0;
     }
 
-    const decayRate = Math.exp(-AUDIO.beatDecay / 16.7);
+    const decayRate = Math.exp(-16.7 / AUDIO.beatDecay);
     AUDIO.beatStrength *= decayRate;
     if (AUDIO.beatStrength < 0.005) {
       AUDIO.beatStrength = 0;
