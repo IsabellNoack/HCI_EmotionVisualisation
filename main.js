@@ -4,6 +4,7 @@ import * as AUDIO_SYSTEM from "./audio.js";
 
 const PARAMS = {
   transitionSmoothness: 6.0,
+  bpmSync: true,
 
   waveWidth: 14,
   waveHeight: 3.8,
@@ -607,6 +608,29 @@ function createMeaningfulMixerUI() {
   reactiveRow.appendChild(reactiveCheckbox);
   reactiveRow.appendChild(reactiveLabel);
 
+  const bpmSyncRow = document.createElement("label");
+  bpmSyncRow.style.display = "flex";
+  bpmSyncRow.style.alignItems = "center";
+  bpmSyncRow.style.gap = "6px";
+  bpmSyncRow.style.cursor = "pointer";
+  bpmSyncRow.style.marginBottom = "2px";
+
+  const bpmSyncCheckbox = document.createElement("input");
+  bpmSyncCheckbox.type = "checkbox";
+  bpmSyncCheckbox.checked = PARAMS.bpmSync;
+
+  const bpmSyncLabel = document.createElement("span");
+  bpmSyncLabel.textContent = "BPM Sync (Waves)";
+  bpmSyncLabel.style.fontSize = "11px";
+  bpmSyncLabel.style.opacity = "0.9";
+
+  bpmSyncCheckbox.addEventListener("change", () => {
+    PARAMS.bpmSync = bpmSyncCheckbox.checked;
+  });
+
+  bpmSyncRow.appendChild(bpmSyncCheckbox);
+  bpmSyncRow.appendChild(bpmSyncLabel);
+
   const playPauseBtn = document.createElement("button");
   playPauseBtn.textContent = "\u25B6 Play";
   playPauseBtn.style.padding = "6px 12px";
@@ -654,6 +678,7 @@ function createMeaningfulMixerUI() {
   testVisRow.appendChild(testVisLabel);
 
   controlRow.appendChild(reactiveRow);
+  controlRow.appendChild(bpmSyncRow);
   controlRow.appendChild(testVisRow);
   controlRow.appendChild(playPauseBtn);
   contentWrapper.appendChild(controlRow);
@@ -1073,8 +1098,8 @@ const vertexShader = `
     float waveB = sin(p.x * 2.85 - uTime * 0.62 + uPhase * 1.2) * uWaveAmpB;
     float n = fbm(vec2(p.x * uNoiseScaleX + uTime * 0.16 + uPhase * 0.5, p.y * uNoiseScaleY - uTime * 0.08));
 
-    p.y += waveA + waveB + (n - 0.5) * uNoiseAmpY * body;
-    p.z += (n - 0.5) * uDepthNoiseAmp * body + sin(p.x * 0.55 - uTime * 0.5 + uPhase) * uDepthWaveAmp * body;
+    p.y += (waveA + waveB) * body + (n - 0.5) * uNoiseAmpY * body;
+    p.z += (n - 0.5) * uDepthNoiseAmp * body + sin(p.x * 2.25 - uTime * 0.5 + uPhase) * uDepthWaveAmp * body;
 
     vNoise = n;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
@@ -1336,15 +1361,11 @@ function animate() {
   
   const sensMultiplier = state.sensitivity !== undefined ? (state.sensitivity / 2.5) : 1.0;
   const s = (state.hasFile && state.isPlaying && state.enabled) ? (state.beatStrength * sensMultiplier) : 0;
+  const isMusicActive = state.hasFile && state.isPlaying && state.enabled;
+  const musicVal = isMusicActive ? (state.volume * 2.0 + state.beatStrength * 0.4) * sensMultiplier : 0;
 
-  // Physical beat-reactive scaling of the entire wave group (vertical stretch & breathing pulse)
-  const yPulse = 1.0 + s * 0.25;
-  const xzPulse = 1.0 + s * 0.08;
-  waveGroup.scale.set(
-    PARAMS.globalScale * xzPulse,
-    PARAMS.globalScale * yPulse,
-    PARAMS.globalScale * xzPulse
-  );
+  // Keep the physical wave group scale completely static to prevent the layout from stretching
+  waveGroup.scale.setScalar(PARAMS.globalScale);
   
   if (Math.round(PARAMS.layerCount) !== ribbons.length) {
     rebuildRibbons(PARAMS.layerCount);
@@ -1439,10 +1460,25 @@ function animate() {
     });
   }
 
+  let currentFlowSpeed = ACTIVE.flowSpeed;
+  let currentSwaySpeed = ACTIVE.swaySpeed;
+
+  if (PARAMS.bpmSync && isMusicActive) {
+    const bpm = state.bpm > 0 ? state.bpm : 120;
+    const bpmFactor = bpm / 120;
+    
+    // Scale baseline speeds with BPM
+    const baseFlow = bpmFactor * 0.45;
+    const baseSway = bpmFactor * 0.08;
+    
+    // Add beat-responsive speed surges (acceleration on beat hits)
+    currentFlowSpeed = baseFlow + s * 1.5;
+    currentSwaySpeed = baseSway + s * 0.3;
+  }
+
   if (!PARAMS.debug.freeze) {
-    const currentFlowSpeed = ACTIVE.flowSpeed + s * 1.8;
     flowTime += deltaTime * currentFlowSpeed;
-    swayTime += deltaTime * ACTIVE.swaySpeed;
+    swayTime += deltaTime * currentSwaySpeed;
   }
   cameraPanTime += deltaTime;
 
@@ -1464,17 +1500,17 @@ function animate() {
     uniforms.uTime.value = flowTime;
     uniforms.uColorA.value.copy(tempColorA);
     uniforms.uColorB.value.copy(tempColorB);
-    uniforms.uOpacity.value = (ACTIVE.baseOpacity - t * ACTIVE.opacityFalloff) * (ACTIVE.alphaMultiplier + s * 0.45);
+    uniforms.uOpacity.value = (ACTIVE.baseOpacity - t * ACTIVE.opacityFalloff) * ACTIVE.alphaMultiplier;
 
     uniforms.uPhase.value = i * ACTIVE.layerPhaseStep;
 
-    uniforms.uWaveAmpA.value = ACTIVE.waveAmpA + s * 0.35;
+    uniforms.uWaveAmpA.value = ACTIVE.waveAmpA;
     uniforms.uWaveAmpB.value = ACTIVE.waveAmpB;
-    uniforms.uNoiseAmpY.value = PARAMS.debug.noNoise ? 0.0 : (ACTIVE.noiseAmpY + s * 0.6);
+    uniforms.uNoiseAmpY.value = PARAMS.debug.noNoise ? 0.0 : ACTIVE.noiseAmpY;
     uniforms.uNoiseScaleX.value = ACTIVE.noiseScaleX;
     uniforms.uNoiseScaleY.value = ACTIVE.noiseScaleY;
     uniforms.uDepthNoiseAmp.value = PARAMS.debug.noNoise ? 0.0 : ACTIVE.depthNoiseAmp;
-    uniforms.uDepthWaveAmp.value = ACTIVE.depthWaveAmp;
+    uniforms.uDepthWaveAmp.value = ACTIVE.depthWaveAmp + musicVal * 0.8;
     uniforms.uFilamentDensity.value = ACTIVE.filamentDensity;
     uniforms.uFilamentSharpness.value = ACTIVE.filamentSharpness;
     uniforms.uShimmerFrequency.value = ACTIVE.shimmerFrequency;
