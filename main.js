@@ -749,7 +749,11 @@ function createMeaningfulMixerUI() {
     { name: "The Infinity (120 BPM)", file: "dcpixelwelt-the-infinity-120-bpm-d-major-13108.mp3" },
     { name: "Sad Track", file: "sad_track.mp3" },
     { name: "Ad Infinitum - New Dawn", file: "Ad Infinitum - New Dawn.mp3" },
-    { name: "Ad Infinitum - Serpent's Downfall", file: "Ad Infinitum - The Serpent's Downfall.mp3" }
+    { name: "Ad Infinitum - Serpent's Downfall", file: "Ad Infinitum - The Serpent's Downfall.mp3" },
+    { name: "BeatSaber - $100 Bills (Angry)", file: "angry_BeatSaber_$100 Bills.mp3" },
+    { name: "Happy Ambient (Happy)", file: "happy_HappyAmbient_KyryloZaplotynskyi.mp3" },
+    { name: "Mindless (Sad)", file: "sad_mindless_AstralisMusic.mp3" },
+    { name: "Open Music (Sad)", file: "sad_openmusic.mp3" }
   ];
 
   const trackRow = document.createElement("label");
