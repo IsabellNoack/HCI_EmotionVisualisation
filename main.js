@@ -4,7 +4,16 @@ import * as AUDIO_SYSTEM from "./audio.js";
 
 const PARAMS = {
   transitionSmoothness: 6.0,
-  bpmSync: true,
+  audioMode: 0, // 0 = Classic, 1 = Bands
+  bassAmp: 1.8,
+  bassFreq: 0.6,
+  bassSpeed: 1.2,
+  midAmp: 0.8,
+  midFreq: 1.8,
+  midSpeed: 2.0,
+  highAmp: 0.25,
+  highFreq: 4.5,
+  highSpeed: 4.0,
 
   waveWidth: 14,
   waveHeight: 3.8,
@@ -80,7 +89,17 @@ const ACTIVE = {
   baseRotationX: PARAMS.baseRotationX,
   baseRgb: { r: 240, g: 180, b: 95 },
   shimmerAmount: 0.7,
-  alphaMultiplier: 1.0
+  alphaMultiplier: 1.0,
+  audioMode: 0,
+  bassAmp: 1.8,
+  bassFreq: 0.6,
+  bassSpeed: 1.2,
+  midAmp: 0.8,
+  midFreq: 1.8,
+  midSpeed: 2.0,
+  highAmp: 0.25,
+  highFreq: 4.5,
+  highSpeed: 4.0
 };
 
 const TARGET = {
@@ -120,7 +139,17 @@ const BLEND_KEYS = [
   "bandFill",
   "baseRotationX",
   "shimmerAmount",
-  "alphaMultiplier"
+  "alphaMultiplier",
+  "audioMode",
+  "bassAmp",
+  "bassFreq",
+  "bassSpeed",
+  "midAmp",
+  "midFreq",
+  "midSpeed",
+  "highAmp",
+  "highFreq",
+  "highSpeed"
 ];
 
 function updateTargetFromDimensions() {
@@ -189,6 +218,17 @@ function updateTargetFromDimensions() {
 
   TARGET.shimmerAmount = shimmerAmount;
   TARGET.alphaMultiplier = glow;
+
+  TARGET.audioMode = PARAMS.audioMode;
+  TARGET.bassAmp = PARAMS.bassAmp;
+  TARGET.bassFreq = PARAMS.bassFreq;
+  TARGET.bassSpeed = PARAMS.bassSpeed;
+  TARGET.midAmp = PARAMS.midAmp;
+  TARGET.midFreq = PARAMS.midFreq;
+  TARGET.midSpeed = PARAMS.midSpeed;
+  TARGET.highAmp = PARAMS.highAmp;
+  TARGET.highFreq = PARAMS.highFreq;
+  TARGET.highSpeed = PARAMS.highSpeed;
 }
 
 function smoothActiveParams(deltaSeconds) {
@@ -607,30 +647,6 @@ function createMeaningfulMixerUI() {
 
   reactiveRow.appendChild(reactiveCheckbox);
   reactiveRow.appendChild(reactiveLabel);
-
-  const bpmSyncRow = document.createElement("label");
-  bpmSyncRow.style.display = "flex";
-  bpmSyncRow.style.alignItems = "center";
-  bpmSyncRow.style.gap = "6px";
-  bpmSyncRow.style.cursor = "pointer";
-  bpmSyncRow.style.marginBottom = "2px";
-
-  const bpmSyncCheckbox = document.createElement("input");
-  bpmSyncCheckbox.type = "checkbox";
-  bpmSyncCheckbox.checked = PARAMS.bpmSync;
-
-  const bpmSyncLabel = document.createElement("span");
-  bpmSyncLabel.textContent = "BPM Sync (Waves)";
-  bpmSyncLabel.style.fontSize = "11px";
-  bpmSyncLabel.style.opacity = "0.9";
-
-  bpmSyncCheckbox.addEventListener("change", () => {
-    PARAMS.bpmSync = bpmSyncCheckbox.checked;
-  });
-
-  bpmSyncRow.appendChild(bpmSyncCheckbox);
-  bpmSyncRow.appendChild(bpmSyncLabel);
-
   const playPauseBtn = document.createElement("button");
   playPauseBtn.textContent = "\u25B6 Play";
   playPauseBtn.style.padding = "6px 12px";
@@ -678,7 +694,6 @@ function createMeaningfulMixerUI() {
   testVisRow.appendChild(testVisLabel);
 
   controlRow.appendChild(reactiveRow);
-  controlRow.appendChild(bpmSyncRow);
   controlRow.appendChild(testVisRow);
   controlRow.appendChild(playPauseBtn);
   contentWrapper.appendChild(controlRow);
@@ -872,8 +887,8 @@ function createMeaningfulMixerUI() {
 
   const sensSlider = document.createElement("input");
   sensSlider.type = "range";
-  sensSlider.min = "0.5";
-  sensSlider.max = "8.0";
+  sensSlider.min = "0";
+  sensSlider.max = "4";
   sensSlider.step = "0.1";
   sensSlider.value = "2.5";
 
@@ -890,6 +905,150 @@ function createMeaningfulMixerUI() {
   sensRow.appendChild(sensSlider);
   sensRow.appendChild(sensValue);
   contentWrapper.appendChild(sensRow);
+
+  // Mode selection buttons
+  const modeContainer = document.createElement("div");
+  modeContainer.style.display = "grid";
+  modeContainer.style.gridTemplateColumns = "1fr 1fr";
+  modeContainer.style.gap = "6px";
+  modeContainer.style.margin = "10px 0";
+
+  const btnClassic = document.createElement("button");
+  btnClassic.textContent = "Classic Mode";
+  btnClassic.style.padding = "6px";
+  btnClassic.style.border = "1px solid rgba(255, 200, 120, 0.35)";
+  btnClassic.style.borderRadius = "4px";
+  btnClassic.style.background = "rgba(255, 200, 120, 0.15)";
+  btnClassic.style.color = "#ffd7a1";
+  btnClassic.style.cursor = "pointer";
+  btnClassic.style.fontSize = "10px";
+  btnClassic.style.fontWeight = "bold";
+  btnClassic.style.outline = "none";
+  btnClassic.style.transition = "all 0.2s ease";
+
+  const btnBands = document.createElement("button");
+  btnBands.textContent = "3-Band EQ Mode";
+  btnBands.style.padding = "6px";
+  btnBands.style.border = "1px solid rgba(255, 200, 120, 0.15)";
+  btnBands.style.borderRadius = "4px";
+  btnBands.style.background = "transparent";
+  btnBands.style.color = "rgba(255, 215, 161, 0.6)";
+  btnBands.style.cursor = "pointer";
+  btnBands.style.fontSize = "10px";
+  btnBands.style.fontWeight = "bold";
+  btnBands.style.outline = "none";
+  btnBands.style.transition = "all 0.2s ease";
+
+  const eqSection = document.createElement("div");
+  eqSection.style.display = "none"; // Hidden by default
+  eqSection.style.borderTop = "1px solid rgba(255, 200, 120, 0.15)";
+  eqSection.style.marginTop = "10px";
+  eqSection.style.paddingTop = "6px";
+
+  const eqHeader = document.createElement("div");
+  eqHeader.textContent = "3-Band EQ Tuning";
+  eqHeader.style.fontWeight = "bold";
+  eqHeader.style.fontSize = "11px";
+  eqHeader.style.color = "#ffd7a1";
+  eqHeader.style.marginBottom = "6px";
+  eqHeader.style.textAlign = "center";
+  eqSection.appendChild(eqHeader);
+
+  function addEqSlider(key, labelText, min, max, step, formatValue) {
+    const row = document.createElement("label");
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "76px minmax(0, 1fr) 44px";
+    row.style.gap = "6px";
+    row.style.alignItems = "center";
+    row.style.margin = "6px 0";
+
+    const name = document.createElement("span");
+    name.textContent = labelText;
+    name.style.fontSize = "10px";
+    name.style.opacity = "0.8";
+
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(PARAMS[key]);
+
+    const value = document.createElement("span");
+    value.textContent = formatValue(PARAMS[key]);
+    value.style.textAlign = "right";
+    value.style.fontSize = "10px";
+
+    const updateUI = () => {
+      input.value = String(PARAMS[key]);
+      value.textContent = formatValue(PARAMS[key]);
+    };
+    uiUpdateCallbacks.push(updateUI);
+
+    input.addEventListener("input", () => {
+      PARAMS[key] = Number(input.value);
+      value.textContent = formatValue(PARAMS[key]);
+      updateTargetFromDimensions();
+    });
+
+    row.appendChild(name);
+    row.appendChild(input);
+    row.appendChild(value);
+    eqSection.appendChild(row);
+  }
+
+  addEqSlider("bassAmp", "Bass Amp", 0.0, 5.0, 0.1, (v) => v.toFixed(1));
+  addEqSlider("bassFreq", "Bass Freq", 0.1, 2.0, 0.05, (v) => v.toFixed(2));
+  addEqSlider("bassSpeed", "Bass Speed", 0.1, 4.0, 0.1, (v) => v.toFixed(1));
+  addEqSlider("midAmp", "Mid Amp", 0.0, 3.0, 0.1, (v) => v.toFixed(1));
+  addEqSlider("midFreq", "Mid Freq", 0.1, 3.0, 0.05, (v) => v.toFixed(2));
+  addEqSlider("midSpeed", "Mid Speed", 0.1, 4.0, 0.1, (v) => v.toFixed(1));
+  addEqSlider("highAmp", "Treble Amp", 0.0, 1.5, 0.05, (v) => v.toFixed(2));
+  addEqSlider("highFreq", "Treble Freq", 0.5, 8.0, 0.1, (v) => v.toFixed(1));
+  addEqSlider("highSpeed", "Treble Speed", 0.5, 8.0, 0.1, (v) => v.toFixed(1));
+
+  btnClassic.addEventListener("click", () => {
+    PARAMS.audioMode = 0;
+    updateTargetFromDimensions();
+    uiUpdateCallbacks.forEach(cb => cb());
+  });
+
+  btnBands.addEventListener("click", () => {
+    PARAMS.audioMode = 1;
+    updateTargetFromDimensions();
+    uiUpdateCallbacks.forEach(cb => cb());
+  });
+
+  const updateButtonsUI = () => {
+    if (PARAMS.audioMode === 0) {
+      btnClassic.style.background = "rgba(255, 200, 120, 0.15)";
+      btnClassic.style.color = "#ffd7a1";
+      btnClassic.style.border = "1px solid rgba(255, 200, 120, 0.35)";
+
+      btnBands.style.background = "transparent";
+      btnBands.style.color = "rgba(255, 215, 161, 0.6)";
+      btnBands.style.border = "1px solid rgba(255, 200, 120, 0.15)";
+
+      eqSection.style.display = "none";
+    } else {
+      btnBands.style.background = "rgba(255, 200, 120, 0.15)";
+      btnBands.style.color = "#ffd7a1";
+      btnBands.style.border = "1px solid rgba(255, 200, 120, 0.35)";
+
+      btnClassic.style.background = "transparent";
+      btnClassic.style.color = "rgba(255, 215, 161, 0.6)";
+      btnClassic.style.border = "1px solid rgba(255, 200, 120, 0.15)";
+
+      eqSection.style.display = "block";
+    }
+  };
+  uiUpdateCallbacks.push(updateButtonsUI);
+  updateButtonsUI();
+
+  modeContainer.appendChild(btnClassic);
+  modeContainer.appendChild(btnBands);
+  contentWrapper.appendChild(modeContainer);
+  contentWrapper.appendChild(eqSection);
 
   // Analysis Data Grid
   const analysisTitle = document.createElement("div");
@@ -1055,6 +1214,22 @@ const vertexShader = `
   uniform float uDepthNoiseAmp;
   uniform float uDepthWaveAmp;
 
+  // 3-Band EQ uniforms
+  uniform float uAudioMode;
+  uniform float uBass;
+  uniform float uMid;
+  uniform float uTreble;
+  uniform float uVolume;
+  uniform float uBassAmp;
+  uniform float uBassFreq;
+  uniform float uBassSpeed;
+  uniform float uMidAmp;
+  uniform float uMidFreq;
+  uniform float uMidSpeed;
+  uniform float uHighAmp;
+  uniform float uHighFreq;
+  uniform float uHighSpeed;
+
   varying vec2 vUv;
   varying float vNoise;
 
@@ -1094,14 +1269,28 @@ const vertexShader = `
     vec3 p = position;
     float body = pow(max(0.0, 1.0 - abs(uv.y - 0.5) * 2.0), 1.25);
 
-    float waveA = sin(p.x * 1.15 + uTime * 0.95 + uPhase) * uWaveAmpA;
-    float waveB = sin(p.x * 2.85 - uTime * 0.62 + uPhase * 1.2) * uWaveAmpB;
+    // Compute base noise (preserved in both modes for visual detail)
     float n = fbm(vec2(p.x * uNoiseScaleX + uTime * 0.16 + uPhase * 0.5, p.y * uNoiseScaleY - uTime * 0.08));
-
-    p.y += (waveA + waveB) * body + (n - 0.5) * uNoiseAmpY * body;
-    p.z += (n - 0.5) * uDepthNoiseAmp * body + sin(p.x * 2.25 - uTime * 0.5 + uPhase) * uDepthWaveAmp * body;
-
     vNoise = n;
+
+    // 1. Classic displacement
+    float waveA_classic = sin(p.x * 1.15 + uTime * 0.95 + uPhase) * uWaveAmpA;
+    float waveB_classic = sin(p.x * 2.85 - uTime * 0.62 + uPhase * 1.2) * uWaveAmpB;
+    float y_classic = waveA_classic + waveB_classic + (n - 0.5) * uNoiseAmpY;
+    float z_classic = (n - 0.5) * uDepthNoiseAmp + sin(p.x * 2.25 - uTime * 0.5 + uPhase) * uDepthWaveAmp;
+
+    // 2. 3-Band EQ displacement
+    float bassWave = sin(p.x * uBassFreq + uTime * uBassSpeed + uPhase) * uBassAmp * uBass;
+    float midWave = sin(p.x * uMidFreq - uTime * uMidSpeed + uPhase * 1.2) * uMidAmp * uMid;
+    float highWave = sin(p.x * uHighFreq + uTime * uHighSpeed + uPhase * 1.8) * uHighAmp * uTreble;
+
+    float y_bands = (bassWave + midWave + highWave) * max(uVolume, 0.4);
+    float z_bands = (n - 0.5) * uDepthNoiseAmp * (0.3 + uVolume * 0.7) + sin(p.x * 2.25 - uTime * 0.5 + uPhase) * uDepthWaveAmp * (0.2 + uMid * 0.8);
+
+    // 3. Morph blend based on uAudioMode
+    p.y += mix(y_classic, y_bands, uAudioMode) * body;
+    p.z += mix(z_classic, z_bands, uAudioMode) * body;
+
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
   }
 `;
@@ -1119,6 +1308,11 @@ const fragmentShader = `
   uniform float uBandSpacing;
   uniform float uBandSharpness;
   uniform float uBandFill;
+
+  // 3-Band EQ uniforms
+  uniform float uAudioMode;
+  uniform float uTreble;
+  uniform vec3 uColorTreble;
 
   varying vec2 vUv;
   varying float vNoise;
@@ -1146,6 +1340,13 @@ const fragmentShader = `
     float textureMask = mix(0.18 + filaments * 0.82, 1.0, fill);
 
     vec3 color = mix(uColorA, uColorB, clamp(vUv.x * 0.75 + vNoise * 0.45, 0.0, 1.0));
+
+    // Treble-reactive color shifting (in Bands mode)
+    if (uAudioMode > 0.01 && uTreble > 0.15) {
+      float highInfluence = (sin(vUv.x * uShimmerFrequency + uTime * 8.0) + 1.0) / 2.0;
+      color = mix(color, uColorTreble, highInfluence * uTreble * 0.4 * uAudioMode);
+    }
+
     float alpha = textureMask * body * edge * shimmer * uOpacity * bandMask;
 
     gl_FragColor = vec4(color, alpha);
@@ -1193,7 +1394,24 @@ function addRibbon(index, total) {
       uBandCount: { value: ACTIVE.bandCount },
       uBandSpacing: { value: ACTIVE.bandSpacing },
       uBandSharpness: { value: ACTIVE.bandSharpness },
-      uBandFill: { value: ACTIVE.bandFill }
+      uBandFill: { value: ACTIVE.bandFill },
+      
+      // 3-Band EQ uniforms
+      uAudioMode: { value: ACTIVE.audioMode },
+      uBass: { value: 0 },
+      uMid: { value: 0 },
+      uTreble: { value: 0 },
+      uVolume: { value: 0 },
+      uBassAmp: { value: ACTIVE.bassAmp },
+      uBassFreq: { value: ACTIVE.bassFreq },
+      uBassSpeed: { value: ACTIVE.bassSpeed },
+      uMidAmp: { value: ACTIVE.midAmp },
+      uMidFreq: { value: ACTIVE.midFreq },
+      uMidSpeed: { value: ACTIVE.midSpeed },
+      uHighAmp: { value: ACTIVE.highAmp },
+      uHighFreq: { value: ACTIVE.highFreq },
+      uHighSpeed: { value: ACTIVE.highSpeed },
+      uColorTreble: { value: new THREE.Color() }
     },
     vertexShader,
     fragmentShader,
@@ -1364,6 +1582,22 @@ function animate() {
   const isMusicActive = state.hasFile && state.isPlaying && state.enabled;
   const musicVal = isMusicActive ? (state.volume * 2.0 + state.beatStrength * 0.4) * sensMultiplier : 0;
 
+  // Calculate live band values
+  const liveBass = isMusicActive ? state.bass * sensMultiplier : 0;
+  const liveMids = isMusicActive ? state.mids * sensMultiplier : 0;
+  const liveTreble = isMusicActive ? state.treble * sensMultiplier : 0;
+  const liveVolume = isMusicActive ? state.volume * sensMultiplier : 0;
+
+  // Calculate treble color by HSL hue rotation of ACTIVE.baseRgb by 120 degrees
+  const r_val = THREE.MathUtils.clamp(ACTIVE.baseRgb.r, 0, 255) / 255;
+  const g_val = THREE.MathUtils.clamp(ACTIVE.baseRgb.g, 0, 255) / 255;
+  const b_val = THREE.MathUtils.clamp(ACTIVE.baseRgb.b, 0, 255) / 255;
+  const currentBaseColor = new THREE.Color(r_val, g_val, b_val);
+  const tempHSL = {};
+  const trebleColor = new THREE.Color();
+  currentBaseColor.getHSL(tempHSL);
+  trebleColor.setHSL((tempHSL.h + 0.33) % 1.0, tempHSL.s, Math.min(1.0, tempHSL.l * 1.25));
+
   // Keep the physical wave group scale completely static to prevent the layout from stretching
   waveGroup.scale.setScalar(PARAMS.globalScale);
   
@@ -1460,25 +1694,9 @@ function animate() {
     });
   }
 
-  let currentFlowSpeed = ACTIVE.flowSpeed;
-  let currentSwaySpeed = ACTIVE.swaySpeed;
-
-  if (PARAMS.bpmSync && isMusicActive) {
-    const bpm = state.bpm > 0 ? state.bpm : 120;
-    const bpmFactor = bpm / 120;
-    
-    // Scale baseline speeds with BPM
-    const baseFlow = bpmFactor * 0.45;
-    const baseSway = bpmFactor * 0.08;
-    
-    // Add beat-responsive speed surges (acceleration on beat hits)
-    currentFlowSpeed = baseFlow + s * 1.5;
-    currentSwaySpeed = baseSway + s * 0.3;
-  }
-
   if (!PARAMS.debug.freeze) {
-    flowTime += deltaTime * currentFlowSpeed;
-    swayTime += deltaTime * currentSwaySpeed;
+    flowTime += deltaTime * ACTIVE.flowSpeed;
+    swayTime += deltaTime * ACTIVE.swaySpeed;
   }
   cameraPanTime += deltaTime;
 
@@ -1519,6 +1737,23 @@ function animate() {
     uniforms.uBandSpacing.value = ACTIVE.bandSpacing;
     uniforms.uBandSharpness.value = ACTIVE.bandSharpness;
     uniforms.uBandFill.value = ACTIVE.bandFill;
+
+    // 3-Band EQ uniforms
+    uniforms.uAudioMode.value = ACTIVE.audioMode;
+    uniforms.uBass.value = liveBass;
+    uniforms.uMid.value = liveMids;
+    uniforms.uTreble.value = liveTreble;
+    uniforms.uVolume.value = liveVolume;
+    uniforms.uBassAmp.value = ACTIVE.bassAmp;
+    uniforms.uBassFreq.value = ACTIVE.bassFreq;
+    uniforms.uBassSpeed.value = ACTIVE.bassSpeed;
+    uniforms.uMidAmp.value = ACTIVE.midAmp;
+    uniforms.uMidFreq.value = ACTIVE.midFreq;
+    uniforms.uMidSpeed.value = ACTIVE.midSpeed;
+    uniforms.uHighAmp.value = ACTIVE.highAmp;
+    uniforms.uHighFreq.value = ACTIVE.highFreq;
+    uniforms.uHighSpeed.value = ACTIVE.highSpeed;
+    uniforms.uColorTreble.value.copy(trebleColor);
 
     ribbon.position.y = centered * ACTIVE.layerYOffset;
     ribbon.position.x = centered * ACTIVE.layerXOffset;
