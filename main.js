@@ -22,6 +22,8 @@ const PARAMS = {
   globalScale: 1.35,
 
   layerCount: 6,
+  layerRandomOffsetIntensity: 0.0,
+  musicCutoff: 0.0,
   baseRotationX: -Math.PI * 0.5,
 
   dimensions: {
@@ -910,6 +912,65 @@ function createMeaningfulMixerUI() {
   sensRow.appendChild(sensValue);
   contentWrapper.appendChild(sensRow);
 
+  // --- Music Variation (per-layer reactivity spread) ---
+  function addMusicParamSlider(labelText, getVal, setVal, min, max, step, fmt) {
+    const row = document.createElement("label");
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "76px minmax(0, 1fr) 44px";
+    row.style.gap = "6px";
+    row.style.alignItems = "center";
+    row.style.margin = "6px 0";
+
+    const name = document.createElement("span");
+    name.textContent = labelText;
+    name.style.fontSize = "11px";
+    name.style.opacity = "0.85";
+
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(getVal());
+
+    const valueSpan = document.createElement("span");
+    valueSpan.textContent = fmt(getVal());
+    valueSpan.style.textAlign = "right";
+    valueSpan.style.fontSize = "11px";
+
+    const updateUI = () => {
+      input.value = String(getVal());
+      valueSpan.textContent = fmt(getVal());
+    };
+    uiUpdateCallbacks.push(updateUI);
+
+    input.addEventListener("input", () => {
+      setVal(Number(input.value));
+      valueSpan.textContent = fmt(Number(input.value));
+    });
+
+    row.appendChild(name);
+    row.appendChild(input);
+    row.appendChild(valueSpan);
+    contentWrapper.appendChild(row);
+  }
+
+  addMusicParamSlider(
+    "music var.",
+    () => PARAMS.layerRandomOffsetIntensity,
+    (v) => { PARAMS.layerRandomOffsetIntensity = v; },
+    0, 1, 0.01,
+    (v) => v.toFixed(2)
+  );
+
+  addMusicParamSlider(
+    "cutoff",
+    () => PARAMS.musicCutoff,
+    (v) => { PARAMS.musicCutoff = v; },
+    0, 1, 0.01,
+    (v) => v.toFixed(2)
+  );
+
   // Mode selection buttons
   const modeContainer = document.createElement("div");
   modeContainer.style.display = "grid";
@@ -1432,6 +1493,8 @@ function addRibbon(index, total) {
   ribbon.rotation.z = centered * PARAMS.layerTilt;
   ribbon.scale.setScalar(1.0 - index * PARAMS.layerScaleFalloff);
   ribbon.userData.layerT = t;
+  // Each layer gets a fixed random seed in [0, 1] used for per-layer offset
+  ribbon.userData.randomSeed = Math.random();
 
   ribbons.push(ribbon);
   waveGroup.add(ribbon);
@@ -1566,6 +1629,26 @@ let wasPanning = false;
 updateTargetFromDimensions();
 createMeaningfulMixerUI();
 
+/**
+ * Soft-knee gate: values below `cutoff` fade smoothly to 0.
+ * Above cutoff they're remapped so that at cutoff+knee the output is already
+ * (knee / (1-cutoff)), climbing linearly to the raw value from there.
+ * At cutoff=0 the function is a no-op (returns v unchanged).
+ */
+function smoothMusicCutoff(v, cutoff) {
+  if (cutoff <= 0.001) return v;
+  if (v <= 0) return 0;
+  // Knee width = 15% of the cutoff value (minimum 0.04)
+  const knee = Math.max(0.04, cutoff * 0.2);
+  const lo = Math.max(0, cutoff - knee);
+  const hi = cutoff + knee;
+  // Smooth gate: 0 below lo, smoothly rises to 1 at hi
+  const gate = THREE.MathUtils.smoothstep(v, lo, hi);
+  // Remap so that at the cutoff point output is ~0 and grows from there
+  const remapped = Math.max(0, (v - cutoff) / Math.max(0.001, 1.0 - cutoff));
+  return gate * remapped;
+}
+
 function animate() {
   requestAnimationFrame(animate);
 
@@ -1584,13 +1667,22 @@ function animate() {
   const sensMultiplier = state.sensitivity !== undefined ? (state.sensitivity / 2.5) : 1.0;
   const s = (state.hasFile && state.isPlaying && state.enabled) ? (state.beatStrength * sensMultiplier) : 0;
   const isMusicActive = state.hasFile && state.isPlaying && state.enabled;
-  const musicVal = isMusicActive ? (state.volume * 2.0 + state.beatStrength * 0.4) * sensMultiplier : 0;
 
-  // Calculate live band values
-  const liveBass = isMusicActive ? state.bass * sensMultiplier : 0;
-  const liveMids = isMusicActive ? state.mids * sensMultiplier : 0;
-  const liveTreble = isMusicActive ? state.treble * sensMultiplier : 0;
-  const liveVolume = isMusicActive ? state.volume * sensMultiplier : 0;
+  // Raw music values (before cutoff)
+  const musicValRaw  = isMusicActive ? (state.volume * 2.0 + state.beatStrength * 0.4) * sensMultiplier : 0;
+  const liveBassRaw  = isMusicActive ? state.bass   * sensMultiplier : 0;
+  const liveMidsRaw  = isMusicActive ? state.mids   * sensMultiplier : 0;
+  const liveTrebleRaw = isMusicActive ? state.treble * sensMultiplier : 0;
+  const liveVolumeRaw = isMusicActive ? state.volume * sensMultiplier : 0;
+
+  // Apply soft-knee cutoff — small spikes are gated out smoothly,
+  // only significant changes pass through.
+  const cut = PARAMS.musicCutoff;
+  const musicVal   = smoothMusicCutoff(musicValRaw,   cut * 0.9); // slightly softer threshold for overall depth
+  const liveBass   = smoothMusicCutoff(liveBassRaw,   cut);
+  const liveMids   = smoothMusicCutoff(liveMidsRaw,   cut);
+  const liveTreble = smoothMusicCutoff(liveTrebleRaw, cut);
+  const liveVolume = smoothMusicCutoff(liveVolumeRaw, cut);
 
   // Calculate treble color by HSL hue rotation of ACTIVE.baseRgb by 120 degrees
   const r_val = THREE.MathUtils.clamp(ACTIVE.baseRgb.r, 0, 255) / 255;
@@ -1726,13 +1818,24 @@ function animate() {
 
     uniforms.uPhase.value = i * ACTIVE.layerPhaseStep;
 
+    // Per-layer music reactivity multiplier:
+    // seed is fixed per layer, intensity slider controls how much layers diverge.
+    // At intensity=0 all layers react identically; at intensity=1 some react up to 2×
+    // as much as others. The multiplier only scales music-driven values,
+    // so the visualisation looks the same when no music is playing.
+    const seed = ribbon.userData.randomSeed !== undefined ? ribbon.userData.randomSeed : 0.5;
+    const musicVarIntensity = PARAMS.layerRandomOffsetIntensity;
+    // Map seed [0,1] → multiplier [1-intensity, 1+intensity]
+    const layerMusicMult = Math.max(0, 1.0 + (seed - 0.5) * 2.0 * musicVarIntensity);
+
     uniforms.uWaveAmpA.value = ACTIVE.waveAmpA;
     uniforms.uWaveAmpB.value = ACTIVE.waveAmpB;
     uniforms.uNoiseAmpY.value = PARAMS.debug.noNoise ? 0.0 : ACTIVE.noiseAmpY;
     uniforms.uNoiseScaleX.value = ACTIVE.noiseScaleX;
     uniforms.uNoiseScaleY.value = ACTIVE.noiseScaleY;
     uniforms.uDepthNoiseAmp.value = PARAMS.debug.noNoise ? 0.0 : ACTIVE.depthNoiseAmp;
-    uniforms.uDepthWaveAmp.value = ACTIVE.depthWaveAmp + musicVal * 0.8;
+    // Only the music-driven depth boost is scaled per layer
+    uniforms.uDepthWaveAmp.value = ACTIVE.depthWaveAmp + musicVal * 0.8 * layerMusicMult;
     uniforms.uFilamentDensity.value = ACTIVE.filamentDensity;
     uniforms.uFilamentSharpness.value = ACTIVE.filamentSharpness;
     uniforms.uShimmerFrequency.value = ACTIVE.shimmerFrequency;
@@ -1742,12 +1845,12 @@ function animate() {
     uniforms.uBandSharpness.value = ACTIVE.bandSharpness;
     uniforms.uBandFill.value = ACTIVE.bandFill;
 
-    // 3-Band EQ uniforms
+    // 3-Band EQ uniforms — band levels are also scaled per layer
     uniforms.uAudioMode.value = ACTIVE.audioMode;
-    uniforms.uBass.value = liveBass;
-    uniforms.uMid.value = liveMids;
-    uniforms.uTreble.value = liveTreble;
-    uniforms.uVolume.value = liveVolume;
+    uniforms.uBass.value = liveBass * layerMusicMult;
+    uniforms.uMid.value = liveMids * layerMusicMult;
+    uniforms.uTreble.value = liveTreble * layerMusicMult;
+    uniforms.uVolume.value = liveVolume * layerMusicMult;
     uniforms.uBassAmp.value = ACTIVE.bassAmp;
     uniforms.uBassFreq.value = ACTIVE.bassFreq;
     uniforms.uBassSpeed.value = ACTIVE.bassSpeed;
