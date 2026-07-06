@@ -288,11 +288,11 @@ function createMeaningfulMixerUI() {
   toggleBtn.style.top = "12px";
   toggleBtn.style.width = "36px";
   toggleBtn.style.height = "36px";
-  toggleBtn.style.background = "rgba(0, 0, 0, 0.62)";
-  toggleBtn.style.border = "1px solid rgba(255, 200, 120, 0.35)";
+  toggleBtn.style.background = "rgba(0, 0, 0, 0)";
+  toggleBtn.style.border = "1px solid rgba(0, 0, 0, 0.35)";
   toggleBtn.style.borderRight = "none";
   toggleBtn.style.borderRadius = "8px 0 0 8px";
-  toggleBtn.style.color = "#ffd7a1";
+  toggleBtn.style.color = "#000000ff";
   toggleBtn.style.cursor = "pointer";
   toggleBtn.style.display = "flex";
   toggleBtn.style.alignItems = "center";
@@ -309,12 +309,12 @@ function createMeaningfulMixerUI() {
   const svg = toggleBtn.querySelector("svg");
 
   toggleBtn.addEventListener("mouseenter", () => {
-    toggleBtn.style.background = "rgba(0, 0, 0, 0.8)";
     toggleBtn.style.borderColor = "rgba(255, 200, 120, 0.6)";
+    toggleBtn.style.color = "#ffd7a1";
   });
   toggleBtn.addEventListener("mouseleave", () => {
-    toggleBtn.style.background = "rgba(0, 0, 0, 0.62)";
-    toggleBtn.style.borderColor = "rgba(255, 200, 120, 0.35)";
+    toggleBtn.style.borderColor = "rgba(0, 0, 0, 0.35)";
+    toggleBtn.style.color = "#000000ff";
   });
 
   function setCollapsed(collapsed) {
@@ -1460,7 +1460,7 @@ function addRibbon(index, total) {
       uBandSpacing: { value: ACTIVE.bandSpacing },
       uBandSharpness: { value: ACTIVE.bandSharpness },
       uBandFill: { value: ACTIVE.bandFill },
-      
+
       // 3-Band EQ uniforms
       uAudioMode: { value: ACTIVE.audioMode },
       uBass: { value: 0 },
@@ -1654,33 +1654,33 @@ function animate() {
 
   // Process beat detection and apply reactive modulation
   // Process beat detection and apply reactive modulation directly to ACTIVE for instant pulse + smooth decay
-  try { AUDIO_SYSTEM.processBeatDetection(); } catch(e) {}
-  
+  try { AUDIO_SYSTEM.processBeatDetection(); } catch (e) { }
+
   updateTargetFromDimensions();
-  
+
   // Apply beat-reactive pulses to ACTIVE parameters (they'll smoothly decay back toward TARGET)
   const state = {};
   try {
     Object.assign(state, AUDIO_SYSTEM.getAudioState());
-  } catch(e) {}
-  
+  } catch (e) { }
+
   const sensMultiplier = state.sensitivity !== undefined ? (state.sensitivity / 2.5) : 1.0;
   const s = (state.hasFile && state.isPlaying && state.enabled) ? (state.beatStrength * sensMultiplier) : 0;
   const isMusicActive = state.hasFile && state.isPlaying && state.enabled;
 
   // Raw music values (before cutoff)
-  const musicValRaw  = isMusicActive ? (state.volume * 2.0 + state.beatStrength * 0.4) * sensMultiplier : 0;
-  const liveBassRaw  = isMusicActive ? state.bass   * sensMultiplier : 0;
-  const liveMidsRaw  = isMusicActive ? state.mids   * sensMultiplier : 0;
+  const musicValRaw = isMusicActive ? (state.volume * 2.0 + state.beatStrength * 0.4) * sensMultiplier : 0;
+  const liveBassRaw = isMusicActive ? state.bass * sensMultiplier : 0;
+  const liveMidsRaw = isMusicActive ? state.mids * sensMultiplier : 0;
   const liveTrebleRaw = isMusicActive ? state.treble * sensMultiplier : 0;
   const liveVolumeRaw = isMusicActive ? state.volume * sensMultiplier : 0;
 
   // Apply soft-knee cutoff — small spikes are gated out smoothly,
   // only significant changes pass through.
   const cut = PARAMS.musicCutoff;
-  const musicVal   = smoothMusicCutoff(musicValRaw,   cut * 0.9); // slightly softer threshold for overall depth
-  const liveBass   = smoothMusicCutoff(liveBassRaw,   cut);
-  const liveMids   = smoothMusicCutoff(liveMidsRaw,   cut);
+  const musicVal = smoothMusicCutoff(musicValRaw, cut * 0.9); // slightly softer threshold for overall depth
+  const liveBass = smoothMusicCutoff(liveBassRaw, cut);
+  const liveMids = smoothMusicCutoff(liveMidsRaw, cut);
   const liveTreble = smoothMusicCutoff(liveTrebleRaw, cut);
   const liveVolume = smoothMusicCutoff(liveVolumeRaw, cut);
 
@@ -1696,7 +1696,7 @@ function animate() {
 
   // Keep the physical wave group scale completely static to prevent the layout from stretching
   waveGroup.scale.setScalar(PARAMS.globalScale);
-  
+
   if (Math.round(PARAMS.layerCount) !== ribbons.length) {
     rebuildRibbons(PARAMS.layerCount);
   }
@@ -1718,7 +1718,7 @@ function animate() {
     const g = THREE.MathUtils.clamp(ACTIVE.baseRgb.g, 0, 255) / 255;
     const b = THREE.MathUtils.clamp(ACTIVE.baseRgb.b, 0, 255) / 255;
     const baseColor = new THREE.Color(r, g, b);
-    
+
     // Create lighter / darker spectrum
     const darkColor = baseColor.clone().multiplyScalar(0.3);
     const lightColor = baseColor.clone().multiplyScalar(1.3);
@@ -1729,7 +1729,7 @@ function animate() {
       const bar = bars[i];
       const t = i / (bars.length - 1);
       const tempColor = new THREE.Color().lerpColors(darkColor, lightColor, t);
-      
+
       // Update color dynamically based on user selection
       bar.material.color.copy(tempColor);
       bar.material.emissive.copy(tempColor).multiplyScalar(0.3);
@@ -1771,7 +1771,7 @@ function animate() {
         const x = posAttr.getX(i);
         const t = i / (pointsCount - 1);
         const tempColor = new THREE.Color().lerpColors(darkColor, lightColor, t);
-        
+
         // Update color attribute dynamically
         colorAttr.setXYZ(i, tempColor.r, tempColor.g, tempColor.b);
 
