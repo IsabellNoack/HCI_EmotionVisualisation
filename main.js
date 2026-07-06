@@ -4,6 +4,8 @@ import * as AUDIO_SYSTEM from "./audio.js";
 
 const PARAMS = {
   transitionSmoothness: 6.0,
+  cameraSpeed: 1.0,
+  cameraPanRange: 70,
   audioMode: 0, // 0 = Classic, 1 = Bands
   bassAmp: 1.8,
   bassFreq: 0.6,
@@ -52,6 +54,7 @@ const PARAMS = {
     noNoise: false,
     noSway: false,
     additive: true,
+    cameraRotation: false,
     cameraPan: false
   }
 };
@@ -604,7 +607,84 @@ function createMeaningfulMixerUI() {
   addDebugCheckbox("noNoise", "disable noise");
   addDebugCheckbox("noSway", "disable sway");
   addDebugCheckbox("additive", "additive blending");
-  addDebugCheckbox("cameraPan", "lazy camera rotation");
+  addDebugCheckbox("cameraRotation", "lazy camera rotation");
+  addDebugCheckbox("cameraPan", "lazy camera pan");
+
+  // Camera Speed Slider (inline to avoid randomisation)
+  const speedRow = document.createElement("label");
+  speedRow.style.display = "grid";
+  speedRow.style.gridTemplateColumns = "76px minmax(0, 1fr) 44px";
+  speedRow.style.gap = "6px";
+  speedRow.style.alignItems = "center";
+  speedRow.style.margin = "6px 0";
+
+  const speedName = document.createElement("span");
+  speedName.textContent = "cam speed";
+
+  const speedInput = document.createElement("input");
+  speedInput.type = "range";
+  speedInput.min = "0.05";
+  speedInput.max = "3.0";
+  speedInput.step = "0.05";
+  speedInput.value = String(PARAMS.cameraSpeed);
+
+  const speedVal = document.createElement("span");
+  speedVal.textContent = PARAMS.cameraSpeed.toFixed(2);
+  speedVal.style.textAlign = "right";
+
+  const updateSpeedUI = () => {
+    speedInput.value = String(PARAMS.cameraSpeed);
+    speedVal.textContent = PARAMS.cameraSpeed.toFixed(2);
+  };
+  uiUpdateCallbacks.push(updateSpeedUI);
+
+  speedInput.addEventListener("input", () => {
+    PARAMS.cameraSpeed = Number(speedInput.value);
+    speedVal.textContent = PARAMS.cameraSpeed.toFixed(2);
+  });
+
+  speedRow.appendChild(speedName);
+  speedRow.appendChild(speedInput);
+  speedRow.appendChild(speedVal);
+  contentWrapper.appendChild(speedRow);
+
+  // Camera Pan Range Slider (inline to avoid randomisation)
+  const rangeRow = document.createElement("label");
+  rangeRow.style.display = "grid";
+  rangeRow.style.gridTemplateColumns = "76px minmax(0, 1fr) 44px";
+  rangeRow.style.gap = "6px";
+  rangeRow.style.alignItems = "center";
+  rangeRow.style.margin = "6px 0";
+
+  const rangeName = document.createElement("span");
+  rangeName.textContent = "pan range";
+
+  const rangeInput = document.createElement("input");
+  rangeInput.type = "range";
+  rangeInput.min = "5";
+  rangeInput.max = "180";
+  rangeInput.step = "5";
+  rangeInput.value = String(PARAMS.cameraPanRange);
+
+  const rangeVal = document.createElement("span");
+  rangeVal.textContent = PARAMS.cameraPanRange + "°";
+  rangeVal.style.textAlign = "right";
+
+  const updateRangeUI = () => {
+    rangeInput.value = String(PARAMS.cameraPanRange);
+    rangeVal.textContent = PARAMS.cameraPanRange + "°";
+  };
+  uiUpdateCallbacks.push(updateRangeUI);
+
+  rangeInput.addEventListener("input", () => {
+    PARAMS.cameraPanRange = Number(rangeInput.value);
+    rangeVal.textContent = PARAMS.cameraPanRange + "°";
+  });
+
+  rangeRow.appendChild(rangeName);
+  rangeRow.appendChild(rangeInput);
+  rangeRow.appendChild(rangeVal);
+  contentWrapper.appendChild(rangeRow);
 
   contentWrapper.appendChild(randomizeBtn);
 
@@ -1626,6 +1706,8 @@ let flowTime = 0;
 let swayTime = 0;
 let cameraPanTime = 0;
 let wasPanning = false;
+let baseAzimuth = 0;
+let hasBaseAngles = false;
 updateTargetFromDimensions();
 createMeaningfulMixerUI();
 
@@ -1868,13 +1950,34 @@ function animate() {
     ribbon.scale.setScalar(1.0 - i * ACTIVE.layerScaleFalloff);
   }
 
-  if (PARAMS.debug.cameraPan) {
+  // Camera Lazy Rotation
+  if (PARAMS.debug.cameraRotation) {
     controls.autoRotate = true;
-    controls.autoRotateSpeed = -0.8; // Smooth, slow rotation
-    wasPanning = true;
-  } else if (wasPanning) {
+    controls.autoRotateSpeed = -0.25 * PARAMS.cameraSpeed;
+  } else {
     controls.autoRotate = false;
-    controls.target.set(0, 0, 0);
+  }
+
+  // Camera Lazy Pan (Oscillates horizontal angle back and forth looking at target)
+  if (PARAMS.debug.cameraPan) {
+    if (!hasBaseAngles) {
+      const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+      const spherical = new THREE.Spherical().setFromVector3(offset);
+      baseAzimuth = spherical.theta;
+      hasBaseAngles = true;
+    }
+    const panSpeed = 0.08 * PARAMS.cameraSpeed;
+    const maxSweep = (PARAMS.cameraPanRange * Math.PI) / 180;
+    const thetaOffset = Math.sin(cameraPanTime * panSpeed) * maxSweep;
+
+    const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+    const spherical = new THREE.Spherical().setFromVector3(offset);
+    spherical.theta = baseAzimuth + thetaOffset;
+    
+    camera.position.setFromSpherical(spherical).add(controls.target);
+    wasPanning = true;
+  } else {
+    hasBaseAngles = false;
     wasPanning = false;
   }
 
