@@ -22,6 +22,8 @@ const PARAMS = {
   meshDensityX: 620,
   meshDensityY: 140,
   globalScale: 1.35,
+  randomColorChange: false,
+  randomColorSpeed: 1.0,
 
   layerCount: 6,
   layerRandomOffsetIntensity: 0.0,
@@ -575,6 +577,75 @@ function createMeaningfulMixerUI() {
     contentWrapper.appendChild(row);
   }
 
+  function addParamCheckbox(key, labelText) {
+    const row = document.createElement("label");
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "1fr auto";
+    row.style.gap = "8px";
+    row.style.alignItems = "center";
+    row.style.margin = "4px 0";
+
+    const name = document.createElement("span");
+    name.textContent = labelText;
+
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = PARAMS[key];
+
+    const updateUI = () => {
+      input.checked = PARAMS[key];
+    };
+    uiUpdateCallbacks.push(updateUI);
+
+    input.addEventListener("change", () => {
+      PARAMS[key] = input.checked;
+    });
+
+    row.appendChild(name);
+    row.appendChild(input);
+    contentWrapper.appendChild(row);
+  }
+
+  function addParamSliderNoRandom(key, labelText, min, max, step, formatValue) {
+    const row = document.createElement("label");
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "76px minmax(0, 1fr) 44px";
+    row.style.gap = "6px";
+    row.style.alignItems = "center";
+    row.style.margin = "6px 0";
+
+    const name = document.createElement("span");
+    name.textContent = labelText;
+
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(PARAMS[key]);
+
+    const value = document.createElement("span");
+    value.textContent = formatValue(PARAMS[key]);
+    value.style.textAlign = "right";
+
+    const updateUI = () => {
+      input.value = String(PARAMS[key]);
+      value.textContent = formatValue(PARAMS[key]);
+    };
+    uiUpdateCallbacks.push(updateUI);
+
+    input.addEventListener("input", () => {
+      PARAMS[key] = Number(input.value);
+      value.textContent = formatValue(PARAMS[key]);
+    });
+
+    row.appendChild(name);
+    row.appendChild(input);
+    row.appendChild(value);
+    contentWrapper.appendChild(row);
+  }
+
+
   addSectionHeader("Dynamics");
   addDimensionSlider("energy", "energy");
   addDimensionSlider("turbulence", "noise");
@@ -599,6 +670,8 @@ function createMeaningfulMixerUI() {
   addDimensionSlider("saturation", "saturation");
   addSlider("glow", "glow", 0, 2, 0.01, (v) => v.toFixed(2), 1, 1, 2);
   addDimensionSlider("shimmerAmount", "shimmer");
+  addParamCheckbox("randomColorChange", "random color");
+  addParamSliderNoRandom("randomColorSpeed", "color speed", 0.05, 4.0, 0.05, (v) => v.toFixed(2));
 
   addSectionHeader("Debug");
   addDebugCheckbox("freeze", "freeze motion");
@@ -1705,6 +1778,7 @@ const tempColorB = new THREE.Color();
 let flowTime = 0;
 let swayTime = 0;
 let cameraPanTime = 0;
+let colorTime = 0;
 let wasPanning = false;
 let baseAzimuth = 0;
 let hasBaseAngles = false;
@@ -1733,6 +1807,16 @@ function smoothMusicCutoff(v, cutoff) {
 
 function animate() {
   requestAnimationFrame(animate);
+
+  const deltaTime = clock.getDelta();
+
+  if (PARAMS.randomColorChange) {
+    colorTime += deltaTime * PARAMS.randomColorSpeed;
+    PARAMS.dimensions.red = Number((0.5 + 0.5 * Math.sin(colorTime * 0.7)).toFixed(5));
+    PARAMS.dimensions.green = Number((0.5 + 0.5 * Math.sin(colorTime * 0.8 + 2.0)).toFixed(5));
+    PARAMS.dimensions.blue = Number((0.5 + 0.5 * Math.sin(colorTime * 0.9 + 4.0)).toFixed(5));
+    uiUpdateCallbacks.forEach(cb => cb());
+  }
 
   // Process beat detection and apply reactive modulation
   // Process beat detection and apply reactive modulation directly to ACTIVE for instant pulse + smooth decay
@@ -1782,7 +1866,6 @@ function animate() {
   if (Math.round(PARAMS.layerCount) !== ribbons.length) {
     rebuildRibbons(PARAMS.layerCount);
   }
-  const deltaTime = clock.getDelta();
   smoothActiveParams(deltaTime);
 
   // Refresh audio UI elements each frame for BPM display and beat indicators
