@@ -54,7 +54,7 @@ const PARAMS = {
     wireframe: false,
     singleLayer: false,
     noNoise: false,
-    noSway: false,
+    noSway: true,
     additive: true,
     cameraRotation: false,
     cameraPan: false
